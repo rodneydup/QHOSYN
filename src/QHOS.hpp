@@ -156,4 +156,39 @@ class HilbertSpace {
 };
 
 // The QHO wavefunction
-class waveFunction {};
+class waveFunction {
+ public:
+  waveFunction(HilbertSpace *hs, double initWaveFunc(double), std::vector<double> coeff) {
+    hilbertSpace = hs;
+    if (!coeff.empty())
+      coefficients = coeff;
+    else {
+      coefficients = orthogonalBasisProjection(initWaveFunc);
+    }
+  }
+
+  std::vector<double> orthogonalBasisProjection(double waveFunc(double)) {
+    std::vector<double> tempCoeff;
+    tempCoeff.resize(hilbertSpace->dim);
+
+    gsl_function gslFunc;
+    gsl_integration_cquad_workspace *w = gsl_integration_cquad_workspace_alloc(1000);
+    for (int i = 0; i < tempCoeff.size(); i++) {
+      auto ptr = [=](double x) {
+        return (std::conj(hilbertSpace->eigenbasis(i, x)) * waveFunc(x)).real();
+      };
+      gsl_function_pp<decltype(ptr)> Fp(ptr);
+      gsl_function *gslFunc = static_cast<gsl_function *>(&Fp);
+      gsl_integration_cquad(gslFunc, -INFINITY, INFINITY, 1.49e-08, 1.49e-08, w, &integrationResult,
+                            NULL, NULL);
+      tempCoeff[i] = integrationResult;
+    }
+    return tempCoeff;
+  }
+
+  double integrationResult;
+
+  HilbertSpace *hilbertSpace;
+  std::vector<double> coefficients;
+  double (*evaluate)(double);
+};

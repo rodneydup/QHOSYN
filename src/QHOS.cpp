@@ -3,7 +3,7 @@
 void QHOS::onInit() {
   std::cout << "onInit() - All domains have been initialized " << std::endl;
   // hilbertSpace hs(2, [](double x) -> double { return 1 / 2 * pow(x, 2); });
-  HilbertSpace hs(2);
+  // HilbertSpace hs(2);
 }
 
 void QHOS::onCreate() {
