@@ -37,8 +37,12 @@ class QHOS : public App {
 
   // Variables
   Mesh plot;
+  Mesh axes;
 
   std::vector<double> posValues = linspace(-5, 5, 300);
+  std::vector<double> reValues;
+  std::vector<double> imValues;
+  std::vector<double> probValues;
   std::vector<std::complex<double>> amplitudeValues;
   HilbertSpace hs{2};
 
