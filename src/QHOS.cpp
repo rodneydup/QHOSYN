@@ -3,27 +3,34 @@
 void QHOS::onInit() {
   std::cout << "onInit() - All domains have been initialized " << std::endl;
   // hilbertSpace hs(2, [](double x) -> double { return 1 / 2 * pow(x, 2); });
-  // HilbertSpace hs(2);
 }
 
 void QHOS::onCreate() {
   std::cout << "onCreate() - Graphics context now available" << std::endl;
-  addWireBox(plot);
+  nav().pos(Vec3f(0, 0, -2));
+  plot.primitive(Mesh::LINE_STRIP);
+  plot.vertex(-1, 0, 0);
+  plot.vertex(1, 0, 0);
+
+  amplitudeValues.resize(posValues.size());
 }
 
-void QHOS::onAnimate(double dt) {}
+void QHOS::onAnimate(double dt) {
+  nav().faceToward(Vec3f(0.0, 0.0, 0.0));
+  plot.reset();
+
+  for (int i = 0; i < posValues.size(); i++) amplitudeValues[i] = psi.evaluate(i, i / 50);
+
+  std::vector<double> reValues;
+  std::vector<double> imValues;
+}
 
 void QHOS::onDraw(Graphics& g) {
   g.clear();
-  // Note: we don't need to do all the normal graphics setup as this
-  // is handled by the App
-  // We can just draw our geometry immediately!
 
-  g.polygonMode(Graphics::LINE);  // wireframe mode
-  g.pushMatrix();
-  g.color(1);
+  g.lighting(false);
+  g.color(HSV(0.0, 0.5, 1));
   g.draw(plot);
-  g.popMatrix();
 }
 
 void QHOS::onSound(al::AudioIOData& io) {

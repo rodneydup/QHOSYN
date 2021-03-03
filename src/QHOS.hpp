@@ -11,6 +11,8 @@
 // for devel branch
 #include "al/app/al_App.hpp"
 #include "al/graphics/al_Shapes.hpp"
+// QHOS
+#include "utility.hpp"
 
 using namespace al;
 
@@ -40,87 +42,22 @@ class QHOS : public App {
 
   // Variables
   Mesh plot;
-};
 
-// helper functions
-int factorial(int x) {
-  int result = 1;
-  for (int i = 1; i <= x; i++) result = result * i;
-  return result;
-}
+  std::vector<double> posValues = linspace(-5, 5, 300);
+  std::vector<double> amplitudeValues;
+  HilbertSpace hs{2};
 
-template <typename T>
-std::vector<double> linspace(T start_in, T end_in, int num_in) {
-  std::vector<double> linspaced;
-
-  double start = static_cast<double>(start_in);
-  double end = static_cast<double>(end_in);
-  double num = static_cast<double>(num_in);
-
-  if (num == 0) {
-    return linspaced;
-  }
-  if (num == 1) {
-    linspaced.push_back(start);
-    return linspaced;
-  }
-
-  double delta = (end - start) / (num - 1);
-
-  for (int i = 0; i < num - 1; ++i) {
-    linspaced.push_back(start + delta * i);
-  }
-  linspaced.push_back(end);  // I want to ensure that start and end
-                             // are exactly the same as the input
-  return linspaced;
-}
-
-// class that discretizes (samples) a function and stores results for lookup later.
-class SampleFunction {
- public:
-  template <typename T>
-  SampleFunction(T f, int min, int max, int numSamples) {
-    minX = min;
-    maxX = max;
-    rangeX = max - min;
-    numSamplesX = numSamples;
-
-    std::vector<double> domain = linspace(minX, maxX, numSamplesX);
-    image.resize(domain.size());
-    for (int x = 0; x < domain.size(); x++) image[x] = (f(domain[x]));
-  }
-
-  double lookup(int x) {
-    x = std::min(std::max(x, minX), maxX - 1);
-    x -= minX;
-    x = std::round(x * (numSamplesX / rangeX));
-    return image[int(x)];
-  }
-
- private:
-  int minX, maxX, rangeX, numSamplesX;
-  std::vector<double> image;
-};
-
-template <typename F>
-class gsl_function_pp : public gsl_function {
- public:
-  gsl_function_pp(const F &func) : _func(func) {
-    function = &gsl_function_pp::invoke;
-    params = this;
-  }
-
- private:
-  const F &_func;
-  static double invoke(double x, void *params) {
-    return static_cast<gsl_function_pp *>(params)->_func(x);
-  }
+  WaveFunction psi{&hs, [](double x) {
+                     if (abs(x) < 5)
+                       return 1.0;
+                     else
+                       return 0.0;
+                   }};
 };
 
 // The state space of the wave function
 class HilbertSpace {
  public:
-  HilbertSpace() {}
   HilbertSpace(int dimensions, double hamiltonianPotential(double)) {
     v = hamiltonianPotential;
     dim = dimensions;
@@ -147,7 +84,7 @@ class HilbertSpace {
 
   template <typename T>
   T eigenvalues(T x) {
-    0.5 + x;
+    return 0.5 + x;
   }
 
   std::vector<std::unique_ptr<SampleFunction>> qhoBasisApprox;
@@ -156,39 +93,73 @@ class HilbertSpace {
 };
 
 // The QHO wavefunction
-class waveFunction {
+class WaveFunction {
  public:
-  waveFunction(HilbertSpace *hs, double initWaveFunc(double), std::vector<double> coeff) {
+  WaveFunction(HilbertSpace *hs, double initWaveFunc(double), std::vector<double> coeff = {}) {
     hilbertSpace = hs;
     if (!coeff.empty())
       coefficients = coeff;
     else {
       coefficients = orthogonalBasisProjection(initWaveFunc);
     }
+    // normF = normalize(prevaluate(x,0));
+    normF = normalize([this](double x) -> double {
+      double sum;
+      for (int n = 0; n < hilbertSpace->dim; n++)
+        sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, 0);
+    });
+    // normalize(prevaluate(x, 0))
   }
 
   std::vector<double> orthogonalBasisProjection(double waveFunc(double)) {
     std::vector<double> tempCoeff;
     tempCoeff.resize(hilbertSpace->dim);
 
-    gsl_function gslFunc;
-    gsl_integration_cquad_workspace *w = gsl_integration_cquad_workspace_alloc(1000);
+    gsl_integration_cquad_workspace *orthoW = gsl_integration_cquad_workspace_alloc(1000);
     for (int i = 0; i < tempCoeff.size(); i++) {
       auto ptr = [=](double x) {
         return (std::conj(hilbertSpace->eigenbasis(i, x)) * waveFunc(x)).real();
       };
       gsl_function_pp<decltype(ptr)> Fp(ptr);
-      gsl_function *gslFunc = static_cast<gsl_function *>(&Fp);
-      gsl_integration_cquad(gslFunc, -INFINITY, INFINITY, 1.49e-08, 1.49e-08, w, &integrationResult,
-                            NULL, NULL);
+      gsl_function *orthoFunc = static_cast<gsl_function *>(&Fp);
+      gsl_integration_cquad(orthoFunc, -INFINITY, INFINITY, 1.49e-08, 1.49e-08, orthoW,
+                            &integrationResult, NULL, NULL);
       tempCoeff[i] = integrationResult;
     }
+    gsl_integration_cquad_workspace_free(orthoW);
     return tempCoeff;
   }
 
-  double integrationResult;
+  double phaseFactor(int n, int t) { return exp(sqrt(-1) * hilbertSpace->eigenvalues(n) * t); }
+  template <typename T>
+  double normalize(T waveFunc(double)) {
+    auto ptr = [=](double x) { return pow(abs(waveFunc(x)), 2); };
+    gsl_function_pp<decltype(ptr)> Fp(ptr);
+    gsl_function *normFunc = static_cast<gsl_function *>(&Fp);
+    gsl_integration_cquad_workspace *normW = gsl_integration_cquad_workspace_alloc(1000);
+    gsl_integration_cquad(normFunc, -INFINITY, INFINITY, 1.49e-08, 1.49e-08, normW,
+                          &integrationResult, NULL, NULL);
+    gsl_integration_cquad_workspace_free(normW);
+    return sqrt(integrationResult);
+  }
 
+  // double prevaluate(int x, int t) {
+  //   double sum;
+  //   for (int n = 0; n < hilbertSpace->dim; n++)
+  //     sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
+  //   return sum;
+  // }
+
+  double evaluate(int x, int t) {
+    double sum;
+    for (int n = 0; n < hilbertSpace->dim; n++)
+      sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
+    return sum / normF;
+  }
+
+  double integrationResult;
+  double normF;
   HilbertSpace *hilbertSpace;
   std::vector<double> coefficients;
-  double (*evaluate)(double);
+  // double (*evaluate)(double x, double t);
 };

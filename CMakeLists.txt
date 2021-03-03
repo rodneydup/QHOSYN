@@ -19,7 +19,10 @@ if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/al_ext)
 endif()
 
 # link allolib to project
-target_link_libraries(${APP_NAME} PRIVATE al)
+find_package(GSL REQUIRED)    # See below (2)
+target_link_libraries(${APP_NAME} PRIVATE al GSL::gsl GSL::gslcblas)
+
+
 
 # example line for find_package usage
 # find_package(Qt5Core REQUIRED CONFIG PATHS "C:/Qt/5.12.0/msvc2017_64/lib" NO_DEFAULT_PATH)
