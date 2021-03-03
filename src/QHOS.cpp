@@ -1,3 +1,5 @@
+#define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
+
 #include "QHOS.hpp"
 
 void QHOS::onInit() {
