@@ -28,7 +28,7 @@ void QHOS::onCreate() {
 void QHOS::onAnimate(double dt) {
   time += dt;
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
-  // plot.reset();
+  plot.reset();
 
   for (int i = 0; i < posValues.size(); i++) amplitudeValues[i] = psi.evaluate(posValues[i], time);
   for (int i = 0; i < posValues.size(); i++) {
