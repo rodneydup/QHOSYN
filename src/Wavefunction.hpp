@@ -11,6 +11,8 @@
 
 #include "utility.hpp"
 
+using namespace std::complex_literals;
+
 // The state space of the wave function
 class HilbertSpace {
  public:
@@ -94,8 +96,8 @@ class WaveFunction {
     return tempCoeff;
   }
 
-  std::complex<double> phaseFactor(int n, int t) {
-    return exp(sqrt(-1) * hilbertSpace->eigenvalues(n) * t);
+  std::complex<double> phaseFactor(double n, double t) {
+    return exp(-1i * hilbertSpace->eigenvalues(n) * t);
   }
 
   std::complex<double> normalize(std::complex<double> waveFunc(double)) {
@@ -109,7 +111,7 @@ class WaveFunction {
     return sqrt(integrationResult);
   }
 
-  std::complex<double> evaluate(int x, int t) {
+  std::complex<double> evaluate(double x, double t) {
     std::complex<double> sum;
     for (int n = 0; n < hilbertSpace->dim; n++)
       sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);

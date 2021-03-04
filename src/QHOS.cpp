@@ -26,11 +26,11 @@ void QHOS::onCreate() {
 }
 
 void QHOS::onAnimate(double dt) {
+  time += dt;
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   // plot.reset();
 
-  for (int i = 0; i < posValues.size(); i++)
-    amplitudeValues[i] = psi.evaluate(posValues[i], dt / 50);
+  for (int i = 0; i < posValues.size(); i++) amplitudeValues[i] = psi.evaluate(posValues[i], time);
   for (int i = 0; i < posValues.size(); i++) {
     plot.vertex(posValues[i], amplitudeValues[i].real(), amplitudeValues[i].imag());
     // std::cout << amplitudeValues[i].real() << std::endl;

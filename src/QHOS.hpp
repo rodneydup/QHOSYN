@@ -39,6 +39,8 @@ class QHOS : public App {
   Mesh plot;
   Mesh axes;
 
+  double time = 0;
+
   std::vector<double> posValues = linspace(-5, 5, 300);
   std::vector<double> reValues;
   std::vector<double> imValues;
