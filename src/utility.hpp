@@ -1,6 +1,7 @@
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
 #include <gsl/gsl_integration.h>
+#include <unistd.h>
 
 #include <vector>
 
@@ -41,7 +42,7 @@ std::vector<double> linspace(T start_in, T end_in, int num_in) {
 class SampleFunction {
  public:
   template <typename T>
-  SampleFunction(T f, int min, int max, int numSamples) {
+  SampleFunction(T f, float min, float max, int numSamples) {
     minX = min;
     maxX = max;
     rangeX = max - min;
@@ -49,10 +50,13 @@ class SampleFunction {
 
     std::vector<double> domain = linspace(minX, maxX, numSamplesX);
     image.resize(domain.size());
-    for (int x = 0; x < domain.size(); x++) image[x] = (f(domain[x]));
+    for (int x = 0; x < domain.size(); x++) image[x] = f(domain[x]);
   }
 
-  double lookup(int x) {
+  double lookup(float x) {
+    // std::cout << x << std::endl;
+    // sleep(1);
+    if (isnan(x)) return 0;
     x = std::min(std::max(x, minX), maxX - 1);
     x -= minX;
     x = std::round(x * (numSamplesX / rangeX));
@@ -60,7 +64,8 @@ class SampleFunction {
   }
 
  private:
-  int minX, maxX, rangeX, numSamplesX;
+  int numSamplesX;
+  float minX, maxX, rangeX;
   std::vector<double> image;
 };
 

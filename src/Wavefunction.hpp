@@ -24,19 +24,19 @@ class HilbertSpace {
     calcEigenBasis();
   }
 
-  // pi^1/4 / sqrt(2^n * n!)  * e^(-x^2/2) * Hn
-  double qhoBasis(int n, int x) {
-    return 1.0 / sqrt(pow(2, n) * factorial(n)) * pow(M_PI, 1 / 4) * exp(pow(-x, 2) / 2) *
+  // pi^1/4 / sqrt(2^n * n!)  * e^(-(x^2/2)) * Hn
+  double qhoBasis(int n, double x) {
+    return (pow(M_PI, 0.25) / sqrt(pow(2, n) * factorial(n))) * exp(pow(x, 2) / -2.0) *
            std::hermite(n, x);
   };
 
   void calcEigenBasis() {
     for (int i = 0; i < dim; i++)
       qhoBasisApprox.push_back(std::make_unique<SampleFunction>(
-        [=](int x) -> double { return qhoBasis(i, x); }, -15, 15, 2000));
+        [=](double x) -> double { return qhoBasis(i, x); }, -15, 15, 2000));
   }
 
-  double eigenbasis(int n, int x) { return qhoBasisApprox[n]->lookup(x); }
+  double eigenbasis(int n, float x) { return qhoBasisApprox[n]->lookup(x); }
 
   template <typename T>
   T eigenvalues(T x) {
@@ -58,6 +58,7 @@ class WaveFunction {
     else {
       coefficients = orthogonalBasisProjection(initWaveFunc);
     }
+
     // find the normalize value for this wavefunction
     auto ptr = [=](double x) {
       std::complex<double> sum;
