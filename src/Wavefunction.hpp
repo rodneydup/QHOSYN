@@ -53,7 +53,7 @@ class HilbertSpace {
 // The QHO wavefunction
 class WaveFunction {
  public:
-  WaveFunction(HilbertSpace *hs, double initWaveFunc(double), std::vector<double> coeff = {}) {
+  WaveFunction(HilbertSpace *hs, double (*initWaveFunc)(double), std::vector<double> coeff = {}) {
     hilbertSpace = hs;
     if (!coeff.empty()) {
       coefficients = coeff;
@@ -61,6 +61,25 @@ class WaveFunction {
       coefficients = orthogonalBasisProjection(initWaveFunc);
     }
 
+    // find the normalize value for this wavefunction
+    auto ptr = [=](double x) {
+      std::complex<double> sum;
+      for (int n = 0; n < hilbertSpace->dim; n++)
+        sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, 0);
+      return pow(abs(sum), 2);
+    };
+    gsl_function_pp<decltype(ptr)> Fp(ptr);
+    gsl_function *normFunc = static_cast<gsl_function *>(&Fp);
+    gsl_integration_cquad_workspace *normW = gsl_integration_cquad_workspace_alloc(1000);
+    gsl_integration_cquad(normFunc, -1, 1, 1.49e-08, 1.49e-08, normW, &integrationResult, NULL,
+                          NULL);
+    normF = sqrt(integrationResult);
+    gsl_integration_cquad_workspace_free(normW);
+  }
+
+  void newHilbertSpace(HilbertSpace *hs, double initWaveFunc(double)) {
+    hilbertSpace = hs;
+    coefficients = orthogonalBasisProjection(initWaveFunc);
     // find the normalize value for this wavefunction
     auto ptr = [=](double x) {
       std::complex<double> sum;
@@ -93,7 +112,6 @@ class WaveFunction {
       tempCoeff[i] = integrationResult;
     }
     gsl_integration_cquad_workspace_free(orthoW);
-    std::cout << tempCoeff[1] << std::endl;
     return tempCoeff;
   }
 
@@ -116,7 +134,6 @@ class WaveFunction {
     std::complex<double> sum = (0, 0);
     for (int n = 0; n < hilbertSpace->dim; n++)
       sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
-    // std::cout << coefficients[0] << std::endl;
     return sum / normF;
   }
 

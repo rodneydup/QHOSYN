@@ -54,8 +54,6 @@ class SampleFunction {
   }
 
   double lookup(float x) {
-    // std::cout << x << std::endl;
-    // sleep(1);
     if (isnan(x)) return 0;
     x = std::min(std::max(x, minX), maxX - 1);
     x -= minX;
