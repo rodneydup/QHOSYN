@@ -53,7 +53,9 @@ class HilbertSpace {
 // The QHO wavefunction
 class WaveFunction {
  public:
-  WaveFunction(HilbertSpace *hs, double (*initWaveFunc)(double), std::vector<double> coeff = {}) {
+  WaveFunction(
+    HilbertSpace *hs, std::function<double(double)> initWaveFunc = [](double x) { return 1.0; },
+    std::vector<double> coeff = {}) {
     hilbertSpace = hs;
     if (!coeff.empty()) {
       coefficients = coeff;
@@ -75,12 +77,18 @@ class WaveFunction {
                           NULL);
     normF = sqrt(integrationResult);
     gsl_integration_cquad_workspace_free(normW);
+    for (int n = 0; n < hilbertSpace->dim; n++) std::cout << coefficients[n] << std::endl;
   }
 
-  void newHilbertSpace(HilbertSpace *hs, double initWaveFunc(double)) {
+  void newHilbertSpace(
+    HilbertSpace *hs, std::function<double(double x)> initWaveFunc = [](double x) { return 1.0; },
+    std::vector<double> coeff = {}) {
     hilbertSpace = hs;
-    coefficients = orthogonalBasisProjection(initWaveFunc);
-    // find the normalize value for this wavefunction
+    if (!coeff.empty()) {
+      coefficients = coeff;
+    } else {
+      coefficients = orthogonalBasisProjection(initWaveFunc);
+    }  // find the normalize value for this wavefunction
     auto ptr = [=](double x) {
       std::complex<double> sum;
       for (int n = 0; n < hilbertSpace->dim; n++)
@@ -94,9 +102,10 @@ class WaveFunction {
                           NULL);
     normF = sqrt(integrationResult);
     gsl_integration_cquad_workspace_free(normW);
+    for (int n = 0; n < hilbertSpace->dim; n++) std::cout << coefficients[n] << std::endl;
   }
 
-  std::vector<double> orthogonalBasisProjection(double waveFunc(double)) {
+  std::vector<double> orthogonalBasisProjection(std::function<double(double x)> waveFunc) {
     std::vector<double> tempCoeff;
     tempCoeff.resize(hilbertSpace->dim);
 
@@ -107,8 +116,8 @@ class WaveFunction {
       };
       gsl_function_pp<decltype(ptr)> Fp(ptr);
       gsl_function *orthoFunc = static_cast<gsl_function *>(&Fp);
-      gsl_integration_cquad(orthoFunc, -1, 1, 1.49e-08, 1.49e-08, orthoW, &integrationResult, NULL,
-                            NULL);
+      gsl_integration_cquad(orthoFunc, -10, 10, 1.49e-08, 1.49e-08, orthoW, &integrationResult,
+                            NULL, NULL);
       tempCoeff[i] = integrationResult;
     }
     gsl_integration_cquad_workspace_free(orthoW);
