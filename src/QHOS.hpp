@@ -48,7 +48,9 @@ class QHOS : public App {
   virtual bool onKeyDown(al::Keyboard const& k) override;
 
   // Variables
-  Mesh plot;
+  Mesh waveFunctionPlot;  // complex valued wave function
+  Mesh probabilityPlot;   // probability distribution
+
   Mesh axes;
 
   // some variables to keep track of states
@@ -56,10 +58,15 @@ class QHOS : public App {
   int tableReader = 0;
   bool drawGUI = 1;
 
-  // some parameters
+  // simulation parameters
   ParameterInt dims{"Dimensions", "", 2, "", 1, 10};
   ParameterBool coeffList{"Manual Coefficient Entry", "", 0};
   ParameterMenu presetFuncs{"Function Presets"};
+  Parameter simSpeed{"simulation speed", 1.0, 0.1, 5.0};
+
+  // audio parameters
+  ParameterMenu sourceOne{"Wavetable 1 source"};
+  ParameterMenu sourceTwo{"Wavetable 2 source"};
 
   // wave function for generating coefficients
   // std::function has some undesirable overhead, I'd rather use a function pointer or lambda, but
@@ -72,11 +79,18 @@ class QHOS : public App {
       return 0.0;
   };
   // some arrays used for plotting
-  std::vector<double> posValues = linspace(-5, 5, 300);
+  const int resolution = 256;
+  std::vector<double> posValues = linspace(-5, 5, resolution);
+  std::vector<std::complex<double>> psiValues;
+  // These arrays store values for copying to the audio wavetable
   std::vector<double> reValues;
   std::vector<double> imValues;
   std::vector<double> probValues;
-  std::vector<std::complex<double>> amplitudeValues;
+
+  // audio wavetable
+  std::vector<std::vector<double>> wavetable;
+  std::vector<double>* wavetableOneSource = &reValues;
+  std::vector<double>* wavetableTwoSource = &reValues;
 
   // initialize the wave function
   WaveFunction psi{new HilbertSpace(dims), initWaveFunction};

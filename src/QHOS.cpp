@@ -1,3 +1,10 @@
+// Quantum Harmonic Oscillator Sonifier
+// By Rodney DuPlessis
+// To do:
+// - make new wavefunction generation asynchronous so it doesn't freeze things up
+// - find more interesting-sounding situations
+// - add arbitrary function input option
+
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
 #include "QHOS.hpp"
@@ -17,8 +24,8 @@ void QHOS::onInit() {
       psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
     }
   });
-  presetFuncs.setElements(
-    {"x = 1 if sin(x); 0 otherwise", "x = 1 if |x|<5; 0 otherwise", "x = random(0 to 1)"});
+  presetFuncs.setElements({"psi = sin(x) if |x| < 2*pi; 0 otherwise",
+                           "psi = 1 if |x|<5; 0 otherwise", "psi = random(0 to 1)"});
   presetFuncs.registerChangeCallback([&](int x) {
     switch (x) {
       case 0:
@@ -49,18 +56,50 @@ void QHOS::onInit() {
     }
     psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
   });
+  sourceOne.setElements({"Real Values", "Imaginary Values", "Probability Values"});
+  sourceOne.registerChangeCallback([&](int x) {
+    switch (x) {
+      case 0:
+        wavetableOneSource = &reValues;
+        break;
+      case 1:
+        wavetableOneSource = &imValues;
+        break;
+      case 2:
+        wavetableOneSource = &probValues;
+        break;
+      default:
+        break;
+    }
+  });
+
+  sourceTwo.setElements({"Real Values", "Imaginary Values", "Probability Values"});
+  sourceTwo.registerChangeCallback([&](int x) {
+    switch (x) {
+      case 0:
+        wavetableTwoSource = &reValues;
+        break;
+      case 1:
+        wavetableTwoSource = &imValues;
+        break;
+      case 2:
+        wavetableTwoSource = &probValues;
+        break;
+      default:
+        break;
+    }
+  });
 
   std::cout << "onInit() - All domains have been initialized " << std::endl;
-  // hilbertSpace hs(2, [](double x) -> double { return 1 / 2 * pow(x, 2); });
 }
 
 void QHOS::onCreate() {
-  std::cout << "onCreate() - Graphics context now available" << std::endl;
   navControl().useMouse(false);
   nav().pos(Vec3f(1, 1, 12));
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   nav().setHome();
-  plot.primitive(Mesh::LINE_STRIP);
+  waveFunctionPlot.primitive(Mesh::LINE_STRIP);
+  probabilityPlot.primitive(Mesh::LINE_STRIP);
   axes.primitive(Mesh::LINES);
   axes.vertex(-5, 0, 0);
   axes.vertex(5, 0, 0);
@@ -69,22 +108,28 @@ void QHOS::onCreate() {
   axes.vertex(0, 0, 5);
   axes.vertex(0, 0, -5);
 
-  amplitudeValues.resize(posValues.size());
-  imValues.resize(posValues.size());
-  reValues.resize(posValues.size());
-  probValues.resize(posValues.size());
+  psiValues.resize(resolution);
+  imValues.resize(resolution);
+  reValues.resize(resolution);
+  probValues.resize(resolution);
+  wavetable.resize(2);
+  wavetable[0].resize(resolution);
+  wavetable[1].resize(resolution);
+  std::cout << "onCreate() - Graphics context now available" << std::endl;
 }
 
 void QHOS::onAnimate(double dt) {
-  simTime += dt;
+  simTime += dt * simSpeed;
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
-  plot.reset();
-
-  for (int i = 0; i < posValues.size(); i++)
-    amplitudeValues[i] = psi.evaluate(posValues[i], simTime);
-  for (int i = 0; i < posValues.size(); i++) {
-    plot.vertex(posValues[i], amplitudeValues[i].real(), amplitudeValues[i].imag());
-    // std::cout << amplitudeValues[i].real() << std::endl;
+  waveFunctionPlot.reset();
+  probabilityPlot.reset();
+  for (int i = 0; i < resolution; i++) {
+    psiValues[i] = psi.evaluate(posValues[i], simTime);
+    reValues[i] = psiValues[i].real();
+    imValues[i] = psiValues[i].imag();
+    probValues[i] = pow(abs(psiValues[i]), 2);
+    waveFunctionPlot.vertex(posValues[i], reValues[i], imValues[i]);
+    probabilityPlot.vertex(posValues[i], probValues[i], 0);
   }
 }
 
@@ -95,13 +140,16 @@ void QHOS::onDraw(Graphics& g) {
   g.color(HSV(0.0, 0.0, 1));
   g.draw(axes);
   g.color(HSV(1.0, 1.0, 1));
-  g.draw(plot);
+  g.draw(waveFunctionPlot);
+  g.color(HSV(0.6, 1.0, 1));
+  g.draw(probabilityPlot);
 
   if (drawGUI) {
     imguiBeginFrame();
 
     ParameterGUI::beginPanel("Simulation");
-    ImGui::Text("Time: %.2f", simTime);
+    ImGui::Text("Simulation Time: %.2f", simTime);
+    ParameterGUI::drawParameter(&simSpeed);
     ParameterGUI::drawParameterInt(&dims, "");
     ParameterGUI::drawParameterBool(&coeffList, "");
     // Option to manually change each coefficient via slider
@@ -115,10 +163,19 @@ void QHOS::onDraw(Graphics& g) {
       }
     } else {
       ParameterGUI::drawMenu(&presetFuncs);
-      for (int i = 0; i < psi.coefficients.size(); i++) {
-        ImGui::Text("coefficient %i: %.10f ", i, psi.coefficients[i]);
-      }
+      if (ImGui::CollapsingHeader("Coefficient Values"))
+        for (int i = 0; i < psi.coefficients.size(); i++) {
+          ImGui::Text("coefficient %i: %.10f ", i, psi.coefficients[i]);
+        }
     }
+    ParameterGUI::endPanel();
+
+    ParameterGUI::beginPanel("Audio");
+    ParameterGUI::drawMenu(&sourceOne);
+    ParameterGUI::drawMenu(&sourceTwo);
+
+    ParameterGUI::endPanel();
+
     imguiEndFrame();
 
     imguiDraw();
@@ -129,10 +186,14 @@ void QHOS::onSound(al::AudioIOData& io) {
   // This is the sample loop
   while (io()) {
     tableReader++;
-    tableReader == amplitudeValues.size() ? tableReader = 0 : NULL;
+    if (tableReader == resolution) {
+      tableReader = 0;
+      wavetable[0] = *wavetableOneSource;
+      wavetable[1] = *wavetableTwoSource;
+    }
 
-    float out1 = amplitudeValues[tableReader].real();
-    float out2 = amplitudeValues[tableReader].real();
+    float out1 = wavetable[0][tableReader];
+    float out2 = wavetable[1][tableReader];
 
     io.out(0) = out1;
     io.out(1) = out2;
