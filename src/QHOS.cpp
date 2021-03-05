@@ -17,6 +17,38 @@ void QHOS::onInit() {
       psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
     }
   });
+  presetFuncs.setElements(
+    {"x = 1 if sin(x); 0 otherwise", "x = 1 if |x|<5; 0 otherwise", "x = random(0 to 1)"});
+  presetFuncs.registerChangeCallback([&](int x) {
+    switch (x) {
+      case 0:
+        initWaveFunction = [](double x) {
+          if (abs(x) < (2 * M_PI))
+            return sin(x);
+          else
+            return 0.0;
+        };
+        break;
+      case 1:
+        initWaveFunction = [](double x) {
+          if (abs(x) < 5)
+            return 1.0;
+          else
+            return 0.0;
+        };
+        break;
+      case 2:
+        initWaveFunction = [](double x) {
+          srand(std::time(0));
+          return double(rand()) / RAND_MAX;
+        };
+        break;
+
+      default:
+        break;
+    }
+    psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
+  });
 
   std::cout << "onInit() - All domains have been initialized " << std::endl;
   // hilbertSpace hs(2, [](double x) -> double { return 1 / 2 * pow(x, 2); });
@@ -70,11 +102,9 @@ void QHOS::onDraw(Graphics& g) {
 
     ParameterGUI::beginPanel("Simulation");
     ImGui::Text("Time: %.2f", simTime);
-    // if (ImGui::SliderInt("Dimensions", &dims, 2, 10)) {
-    //   psi.newHilbertSpace(new HilbertSpace(dims), thing);
-    // }
     ParameterGUI::drawParameterInt(&dims, "");
     ParameterGUI::drawParameterBool(&coeffList, "");
+    // Option to manually change each coefficient via slider
     if (coeffList) {
       for (int i = 0; i < manualCoefficients.size(); i++) {
         std::string coeffName = "C_n " + std::to_string(i);
@@ -84,6 +114,7 @@ void QHOS::onDraw(Graphics& g) {
         }
       }
     } else {
+      ParameterGUI::drawMenu(&presetFuncs);
       for (int i = 0; i < psi.coefficients.size(); i++) {
         ImGui::Text("coefficient %i: %.10f ", i, psi.coefficients[i]);
       }
