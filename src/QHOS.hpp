@@ -55,16 +55,17 @@ class QHOS : public App {
 
   // some variables to keep track of states
   double simTime = 0;
-  int tableReader = 0;
+  float tableReader = 0;
   bool drawGUI = 1;
 
   // simulation parameters
-  ParameterInt dims{"Dimensions", "", 2, "", 1, 10};
+  ParameterInt dims{"Dimensions", "", 2, "", 1, 20};
   ParameterBool coeffList{"Manual Coefficient Entry", "", 0};
   ParameterMenu presetFuncs{"Function Presets"};
-  Parameter simSpeed{"simulation speed", 1.0, 0.1, 5.0};
+  Parameter simSpeed{"simulation speed", 1.0, -5.0, 5.0};
 
   // audio parameters
+  Parameter freq{"Frequency", 200, 30, 1000};
   ParameterMenu sourceOne{"Wavetable 1 source"};
   ParameterMenu sourceTwo{"Wavetable 2 source"};
 
@@ -97,6 +98,9 @@ class QHOS : public App {
 
   // copy the coefficients into our variable for manual coefficient control
   std::vector<double> manualCoefficients = psi.coefficients;
+
+  // mutex lock to avoid audio thread grabbing a half-written wavetable
+  std::mutex wavetableLock;
 
   // custom wrapper for double precision imgui sliders
   bool SliderDouble(const char* label, double* v, double v_min, double v_max,

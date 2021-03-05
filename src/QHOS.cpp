@@ -1,10 +1,14 @@
-// Quantum Harmonic Oscillator Sonifier
-// By Rodney DuPlessis
-// To do:
-// - make new wavefunction generation asynchronous so it doesn't freeze things up
-// - find more interesting-sounding situations
-// - add arbitrary function input option
 
+/*
+Quantum Harmonic Oscillator Sonifier
+By Rodney DuPlessis
+To do:
+- make new wavefunction generation asynchronous so it doesn't freeze things up
+- find more interesting-sounding situations
+- add arbitrary function input option
+
+
+*/
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
 #include "QHOS.hpp"
@@ -123,6 +127,7 @@ void QHOS::onAnimate(double dt) {
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   waveFunctionPlot.reset();
   probabilityPlot.reset();
+  wavetableLock.lock();
   for (int i = 0; i < resolution; i++) {
     psiValues[i] = psi.evaluate(posValues[i], simTime);
     reValues[i] = psiValues[i].real();
@@ -131,6 +136,7 @@ void QHOS::onAnimate(double dt) {
     waveFunctionPlot.vertex(posValues[i], reValues[i], imValues[i]);
     probabilityPlot.vertex(posValues[i], probValues[i], 0);
   }
+  wavetableLock.unlock();
 }
 
 void QHOS::onDraw(Graphics& g) {
@@ -171,6 +177,7 @@ void QHOS::onDraw(Graphics& g) {
     ParameterGUI::endPanel();
 
     ParameterGUI::beginPanel("Audio");
+    ParameterGUI::drawParameter(&freq);
     ParameterGUI::drawMenu(&sourceOne);
     ParameterGUI::drawMenu(&sourceTwo);
 
@@ -185,18 +192,32 @@ void QHOS::onDraw(Graphics& g) {
 void QHOS::onSound(al::AudioIOData& io) {
   // This is the sample loop
   while (io()) {
-    tableReader++;
-    if (tableReader == resolution) {
-      tableReader = 0;
-      wavetable[0] = *wavetableOneSource;
-      wavetable[1] = *wavetableTwoSource;
+    // increment table reader
+    tableReader += freq / (io.fps() / resolution);
+    // if table reader gets to the ened of the table
+    if (tableReader >= resolution) {
+      // loop
+      tableReader -= resolution;
+      // update table
+      if (wavetableLock.try_lock()) {
+        wavetable[0] = *wavetableOneSource;
+        wavetable[1] = *wavetableTwoSource;
+        wavetableLock.unlock();
+      }
     }
-
-    float out1 = wavetable[0][tableReader];
-    float out2 = wavetable[1][tableReader];
-
-    io.out(0) = out1;
-    io.out(1) = out2;
+    // output sample
+    float sample[2];
+    // linear interpolation for table reads between indices
+    for (int i = 0; i < 2; i++) {
+      int j = floor(tableReader);
+      float x0 = wavetable[i][j];
+      float x1 = wavetable[i][(j == (wavetable[i].size() - 1)) ? 0 : j + 1];  // looping semantics
+      float t = tableReader - j;
+      sample[i] = (x1 * t + x0 * (1 - t)) / 2;  // (divided by 2 because it's loud)
+    }
+    // output
+    io.out(0) = sample[0];
+    io.out(1) = sample[1];
   }
 }
 
