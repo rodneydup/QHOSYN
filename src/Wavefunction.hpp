@@ -63,7 +63,7 @@ class WaveFunction {
       coefficients = orthogonalBasisProjection(initWaveFunc);
     }
 
-    // find the normalize value for this wavefunction
+    // find the normalized value for this wavefunction
     auto ptr = [=](double x) {
       std::complex<double> sum;
       for (int n = 0; n < hilbertSpace->dim; n++)
@@ -144,6 +144,10 @@ class WaveFunction {
     for (int n = 0; n < hilbertSpace->dim; n++)
       sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
     return sum / normF;
+  }
+
+  void collapse(){
+    
   }
 
   double integrationResult;
