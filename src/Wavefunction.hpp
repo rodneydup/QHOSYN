@@ -77,7 +77,6 @@ class WaveFunction {
                           NULL);
     normF = sqrt(integrationResult);
     gsl_integration_cquad_workspace_free(normW);
-    for (int n = 0; n < hilbertSpace->dim; n++) std::cout << coefficients[n] << std::endl;
   }
 
   void newHilbertSpace(
@@ -102,7 +101,6 @@ class WaveFunction {
                           NULL);
     normF = sqrt(integrationResult);
     gsl_integration_cquad_workspace_free(normW);
-    for (int n = 0; n < hilbertSpace->dim; n++) std::cout << coefficients[n] << std::endl;
   }
 
   std::vector<double> orthogonalBasisProjection(std::function<double(double x)> waveFunc) {
@@ -146,9 +144,7 @@ class WaveFunction {
     return sum / normF;
   }
 
-  void collapse(){
-    
-  }
+  void collapse() {}
 
   double integrationResult;
   double normF;

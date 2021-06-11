@@ -19,13 +19,20 @@ void QHOS::onInit() {
     manualCoefficients.resize(dims);
     psi.newHilbertSpace(new HilbertSpace(x), initWaveFunction);
     manualCoefficients = psi.coefficients;
+    for (int i = 0; i < manualCoefficients.size(); i++) {
+      std::string coeffName = "C_n " + std::to_string(i);
+      std::cout << coeffName << " = " << psi.coefficients[i] << std::endl;
+    }
   });
   coeffList.registerChangeCallback([&](bool x) {
     if (x) {
-      std::cout << "true" << std::endl;
       psi.newHilbertSpace(new HilbertSpace(dims), NULL, manualCoefficients);
     } else {
       psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
+    }
+    for (int i = 0; i < manualCoefficients.size(); i++) {
+      std::string coeffName = "C_n " + std::to_string(i);
+      std::cout << coeffName << " = " << psi.coefficients[i] << std::endl;
     }
   });
   presetFuncs.setElements({"psi = sin(x) if |x| < 2*pi; 0 otherwise",
@@ -128,7 +135,7 @@ void QHOS::onCreate() {
   axes.generateNormals();
 
   grid.primitive(Mesh::LINES);
-  for (int i = -5; i < 5; i++) {
+  for (int i = -5; i <= 5; i++) {
     // back grid
     grid.vertex(i, -5, -5);
     grid.vertex(i, 5, -5);
@@ -291,7 +298,6 @@ void QHOS::onDraw(Graphics& g) {
     if (coeffList) {
       for (int i = 0; i < manualCoefficients.size(); i++) {
         std::string coeffName = "C_n " + std::to_string(i);
-        std::cout << coeffName << " = " << psi.coefficients[i] << std::endl;
         if (SliderDouble((coeffName).c_str(), &manualCoefficients[i], -10, 10)) {
           psi.newHilbertSpace(new HilbertSpace(dims), NULL, manualCoefficients);
         }
