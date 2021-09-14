@@ -35,7 +35,7 @@ class HilbertSpace {
   void calcEigenBasis() {
     for (int i = 0; i < dim; i++)
       qhoBasisApprox.push_back(std::make_unique<SampleFunction>(
-        [=](double x) -> double { return qhoBasis(i, x); }, -15, 15, 2000));
+        [=](double x) -> double { return qhoBasis(i, x); }, -10, 10, 1024));
   }
 
   double eigenbasis(int n, float x) { return qhoBasisApprox[n]->lookup(x); }
@@ -55,54 +55,39 @@ class WaveFunction {
  public:
   WaveFunction(
     HilbertSpace *hs, std::function<double(double)> initWaveFunc = [](double x) { return 1.0; },
-    std::vector<double> coeff = {}) {
-    hilbertSpace = hs;
-    if (!coeff.empty()) {
-      coefficients = coeff;
-    } else {
-      coefficients = orthogonalBasisProjection(initWaveFunc);
-    }
+    std::vector<double> coeff = {}, bool project = 1) {
+    newHilbertSpace(hs, initWaveFunc, coeff, project);
+  }
 
-    // find the normalized value for this wavefunction
-    auto ptr = [=](double x) {
-      std::complex<double> sum;
-      for (int n = 0; n < hilbertSpace->dim; n++)
-        sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, 0);
-      return pow(abs(sum), 2);
-    };
+  // calculate phase
+  std::complex<double> phaseFactor(double n, double t) {
+    return exp(-1i * hilbertSpace->eigenvalues(n) * t);
+  }
+
+  // Lookup value from wavefuntion for time t at position value x, summing over eigenstates
+  std::complex<double> wavefunc(double x, double t) {
+    std::complex<double> sum = (0, 0);
+    for (int n = 0; n < hilbertSpace->dim; n++)
+      sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
+    return sum;
+  }
+
+  // calculate normalize value
+  void normalize() {
+    auto ptr = [=](double x) { return pow(abs(wavefunc(x, 0)), 2); };
     gsl_function_pp<decltype(ptr)> Fp(ptr);
     gsl_function *normFunc = static_cast<gsl_function *>(&Fp);
     gsl_integration_cquad_workspace *normW = gsl_integration_cquad_workspace_alloc(1000);
     gsl_integration_cquad(normFunc, -1, 1, 1.49e-08, 1.49e-08, normW, &integrationResult, NULL,
                           NULL);
-    normF = sqrt(integrationResult);
     gsl_integration_cquad_workspace_free(normW);
+    normF = sqrt(integrationResult);
   }
 
-  void newHilbertSpace(
-    HilbertSpace *hs, std::function<double(double x)> initWaveFunc = [](double x) { return 1.0; },
-    std::vector<double> coeff = {}) {
-    hilbertSpace = hs;
-    if (!coeff.empty()) {
-      coefficients = coeff;
-    } else {
-      coefficients = orthogonalBasisProjection(initWaveFunc);
-    }  // find the normalize value for this wavefunction
-    auto ptr = [=](double x) {
-      std::complex<double> sum;
-      for (int n = 0; n < hilbertSpace->dim; n++)
-        sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, 0);
-      return pow(abs(sum), 2);
-    };
-    gsl_function_pp<decltype(ptr)> Fp(ptr);
-    gsl_function *normFunc = static_cast<gsl_function *>(&Fp);
-    gsl_integration_cquad_workspace *normW = gsl_integration_cquad_workspace_alloc(1000);
-    gsl_integration_cquad(normFunc, -1, 1, 1.49e-08, 1.49e-08, normW, &integrationResult, NULL,
-                          NULL);
-    normF = sqrt(integrationResult);
-    gsl_integration_cquad_workspace_free(normW);
-  }
+  // Return wavefunc normalized
+  std::complex<double> evaluate(double x, double t) { return wavefunc(x, t) / normF; }
 
+  // get the coefficients from an orthogonal basis projection of the initial function
   std::vector<double> orthogonalBasisProjection(std::function<double(double x)> waveFunc) {
     std::vector<double> tempCoeff;
     tempCoeff.resize(hilbertSpace->dim);
@@ -122,28 +107,25 @@ class WaveFunction {
     return tempCoeff;
   }
 
-  std::complex<double> phaseFactor(double n, double t) {
-    return exp(-1i * hilbertSpace->eigenvalues(n) * t);
+  // instantiate a new hilbert space
+  void newHilbertSpace(
+    HilbertSpace *hs, std::function<double(double x)> initWaveFunc = [](double x) { return 1.0; },
+    std::vector<double> coeff = {}, bool project = 1) {
+    hilbertSpace = hs;
+    if (!coeff.empty()) {
+      coefficients = coeff;
+    } else {
+      if (project) {
+        coefficients = orthogonalBasisProjection(initWaveFunc);
+      } else {
+        for (int i = 0; i < hilbertSpace->dim; i++) coefficients[i] = initWaveFunc(i);
+      }
+    }
+    normalize();
   }
 
-  std::complex<double> normalize(std::complex<double> waveFunc(double)) {
-    auto ptr = [=](double x) { return pow(abs(waveFunc(x)), 2); };
-    gsl_function_pp<decltype(ptr)> Fp(ptr);
-    gsl_function *normFunc = static_cast<gsl_function *>(&Fp);
-    gsl_integration_cquad_workspace *normW = gsl_integration_cquad_workspace_alloc(1000);
-    gsl_integration_cquad(normFunc, -INFINITY, INFINITY, 1.49e-08, 1.49e-08, normW,
-                          &integrationResult, NULL, NULL);
-    gsl_integration_cquad_workspace_free(normW);
-    return sqrt(integrationResult);
-  }
-
-  std::complex<double> evaluate(double x, double t) {
-    std::complex<double> sum = (0, 0);
-    for (int n = 0; n < hilbertSpace->dim; n++)
-      sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
-    return sum / normF;
-  }
-
+  // collapse the wavefunction, would need to find a numerical solution to make this work in
+  // real-time and continue evolving.
   void collapse() {}
 
   double integrationResult;

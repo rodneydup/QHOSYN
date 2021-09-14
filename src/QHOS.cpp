@@ -5,8 +5,6 @@ By Rodney DuPlessis
 To do:
 - make new wavefunction generation asynchronous so it doesn't freeze things up
 - find more interesting-sounding situations
-- add arbitrary function input option
-
 
 */
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
@@ -14,94 +12,155 @@ To do:
 #include "QHOS.hpp"
 
 void QHOS::onInit() {
+  title("QHOS");
+  audioIO().setStreamName("QHOS");
+  srand(std::time(0));
+  emptyTable.fill(0);
+
   imguiInit();
+
   dims.registerChangeCallback([&](int x) {
-    manualCoefficients.resize(dims);
-    psi.newHilbertSpace(new HilbertSpace(x), initWaveFunction);
+    manualCoefficients.resize(x);
+    if (coeffList)
+      psi.newHilbertSpace(new HilbertSpace(x), NULL, manualCoefficients);
+    else {
+      psi.newHilbertSpace(new HilbertSpace(x), initWaveFunction, {}, project);
+    }
     manualCoefficients = psi.coefficients;
+
     for (int i = 0; i < manualCoefficients.size(); i++) {
       std::string coeffName = "C_n " + std::to_string(i);
       std::cout << coeffName << " = " << psi.coefficients[i] << std::endl;
     }
   });
+
   coeffList.registerChangeCallback([&](bool x) {
     if (x) {
       psi.newHilbertSpace(new HilbertSpace(dims), NULL, manualCoefficients);
     } else {
-      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
+      bool project = 1;
+      if (presetFuncs.get() == 1) project = 0;
+      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, project);
     }
     for (int i = 0; i < manualCoefficients.size(); i++) {
       std::string coeffName = "C_n " + std::to_string(i);
       std::cout << coeffName << " = " << psi.coefficients[i] << std::endl;
     }
   });
-  presetFuncs.setElements({"psi = sin(x) if |x| < 2*pi; 0 otherwise",
-                           "psi = 1 if |x|<5; 0 otherwise", "psi = random(0 to 1)"});
-  presetFuncs.registerChangeCallback([&](int x) {
-    switch (x) {
+
+  presetFuncs.setElements({"psi = sin(x)", "psi = 1 if x=dimensions; 0 otherwise",
+                           "psi = random(0 to 1)", "psi = x - 2", " psi = 1/(x+1)"});
+  presetFuncs.registerChangeCallback([&](int choice) {
+    switch (choice) {
       case 0:
-        initWaveFunction = [](double x) {
-          if (abs(x) < (2 * M_PI))
-            return sin(x);
-          else
-            return 0.0;
-        };
+        initWaveFunction = [](double x) { return sin(x); };
         break;
       case 1:
-        initWaveFunction = [](double x) {
-          if (abs(x) < 5)
+        initWaveFunction = [&](double x) {
+          if (abs(x) == 10)
             return 1.0;
           else
             return 0.0;
         };
         break;
       case 2:
-        initWaveFunction = [](double x) {
-          srand(std::time(0));
-          return double(rand()) / RAND_MAX;
-        };
+        initWaveFunction = [](double x) { return double(rand()) / (RAND_MAX / 2) - 1; };
+        break;
+      case 3:
+        initWaveFunction = [](double x) { return x - 2; };
+        break;
+      case 4:
+        initWaveFunction = [](double x) { return 1.0 / (x + 1); };
         break;
 
       default:
         break;
     }
-    psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction);
+    psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, project);
   });
-  sourceOne.setElements({"Real Values", "Imaginary Values", "Probability Values"});
-  sourceOne.registerChangeCallback([&](int x) {
+
+  project.registerChangeCallback([&](bool on) {
+    if (on)
+      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, 1);
+    else
+      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, 0);
+  });
+
+  sourceOneMenu.setElements({"none", "Real Wavetable", "Imaginary Wavetable",
+                             "Probability Wavetable", "Probability Noise-Band",
+                             "Inverse Fourier Transform"});
+  sourceOneMenu.registerChangeCallback([&](int x) {
+    sourceSelect[0] = 0;
     switch (x) {
       case 0:
-        wavetableOneSource = &reValues;
+        source[0] = &emptyTable;
         break;
       case 1:
-        wavetableOneSource = &imValues;
+        source[0] = &reValues;
         break;
       case 2:
-        wavetableOneSource = &probValues;
+        source[0] = &imValues;
+        break;
+      case 3:
+        source[0] = &probValues;
+        break;
+      case 4:
+        sourceSelect[0] = 4;
+        break;
+      case 5:
+        sourceSelect[0] = 5;
         break;
       default:
         break;
     }
   });
+  sourceOneMenu.set(1);
 
-  sourceTwo.setElements({"Real Values", "Imaginary Values", "Probability Values"});
-  sourceTwo.registerChangeCallback([&](int x) {
+  sourceTwoMenu.setElements({"none", "Real Wavetable", "Imaginary Wavetable",
+                             "Probability Wavetable", "Probability Noise-Band",
+                             "Inverse Fourier Transform"});
+  sourceTwoMenu.registerChangeCallback([&](int x) {
+    sourceSelect[1] = 0;
     switch (x) {
       case 0:
-        wavetableTwoSource = &reValues;
+        source[1] = &emptyTable;
         break;
       case 1:
-        wavetableTwoSource = &imValues;
+        source[1] = &reValues;
         break;
       case 2:
-        wavetableTwoSource = &probValues;
+        source[1] = &imValues;
+        break;
+      case 3:
+        source[1] = &probValues;
+        break;
+      case 4:
+        sourceSelect[1] = 4;
+        break;
+      case 5:
+        sourceSelect[1] = 5;
         break;
       default:
         break;
     }
   });
+  sourceTwoMenu.set(2);
 
-  oscClient.open(oscPort, oscAddr);
+  oscClient.open(oscClientPort, oscClientAddr);
+
+  // Check for connected MIDI devices
+  if (midiIn.getPortCount() > 0) {
+    // Bind ourself to the RtMidiIn object, to have the onMidiMessage()
+    // callback called whenever a MIDI message is received
+    MIDIMessageHandler::bindTo(midiIn);
+
+    // Open the last device found
+    unsigned int port = midiIn.getPortCount() - 1;
+    midiIn.openPort(port);
+    printf("Opened port to %s\n", midiIn.getPortName(port).c_str());
+  } else {
+    printf("Error: No MIDI devices found.\n");
+  }
 
   std::cout << "onInit() - All domains have been initialized " << std::endl;
 }
@@ -114,7 +173,7 @@ void QHOS::onCreate() {
 
   // port, address, timeout
   // "" as address for localhost
-  oscServer.open(16448, "localhost", 0.05);
+  oscServer.open(oscServerPort, oscServerAddr, 0.05);
 
   // Register ourself (osc::PacketHandler) with the server so onMessage
   // gets called.
@@ -125,6 +184,7 @@ void QHOS::onCreate() {
 
   waveFunctionPlot.primitive(Mesh::LINE_STRIP);
   probabilityPlot.primitive(Mesh::LINE_STRIP);
+  momentumPlot.primitive(Mesh::LINE_STRIP);
   axes.primitive(Mesh::LINES);
   axes.vertex(-5, 0, 0);
   axes.vertex(5, 0, 0);
@@ -166,8 +226,7 @@ void QHOS::onCreate() {
   lineShader.compile(shader::lineVertex, shader::lineFragment, shader::lineGeometry);
 
   // use a texture to control the alpha channel of each particle
-  //
-  pointTexture.create2D(256, 256, Texture::R8, Texture::RED, Texture::SHORT);
+  pointTexture.create2D(512, 512, Texture::R8, Texture::RED, Texture::SHORT);
   int Nx = pointTexture.width();
   int Ny = pointTexture.height();
   std::vector<short> alpha;
@@ -183,11 +242,11 @@ void QHOS::onCreate() {
   }
   pointTexture.submit(&alpha[0]);
 
-  lineTexture.create1D(256, Texture::R8, Texture::RED, Texture::SHORT);
+  lineTexture.create1D(512, Texture::R8, Texture::RED, Texture::SHORT);
   std::vector<short> beta;
   beta.resize(lineTexture.width());
   for (int i = 0; i < beta.size(); ++i) {
-    beta[i] = alpha[128 * beta.size() + i];
+    beta[i] = alpha[256 * beta.size() + i];
   }
   lineTexture.submit(&beta[0]);
 
@@ -202,21 +261,57 @@ void QHOS::onCreate() {
     waveFunctionPlot.color(1.0, 0.0, 0.0, 0.9);  // add color for each vertex
     probabilityPlot.color(0.0, 0.0, 1.0, 0.9);   // add color for each vertex
   }
-  for (int i = 0; i < 20; i++) {
-    samples.color(1.0, 1.0, 1.0, 1.0);
-    samples.texCoord(1.0, 0.0);
+
+  for (int i = 0; i < fftSize; i++) {
+    momentumPlot.texCoord(1.0, 0.0);
+    momentumPlot.color(0.0, 1.0, 0.0, 0.9);
   }
+
+  for (int i = 0; i < 20; i++) {
+    samples.texCoord(1.0, 0.0);
+    samples.color(1.0, 1.0, 1.0, 1.0);
+  }
+
+  // fill windowing arrays
+  gam::tbl::hann(&overlapAddWindow[0], overlapAddWindow.size());
+  gam::tbl::hamming(&filterKernelWindow[0], filterKernelWindow.size());
+
+  // forward (complex to complex) fftw things
+  // c2cForwardIn = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+  // c2cForwardOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+  // c2cForward = fftw_plan_dft_1d(fftSize, c2cForwardIn, c2cForwardOut, FFTW_FORWARD,
+  // FFTW_ESTIMATE);
+
+  // inverse fftw things
+  c2rIn = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * ((fftSize / 2) + 1));
+  c2rOut = (double*)fftw_malloc(sizeof(double) * fftSize);
+  c2r = fftw_plan_dft_c2r_1d(fftSize, c2rIn, c2rOut, FFTW_ESTIMATE);
+
+  // forward fftw things
+  r2cIn = (double*)fftw_malloc(sizeof(double) * fftSize);
+  r2cOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * ((fftSize / 2) + 1));
+  r2c = fftw_plan_dft_r2c_1d(fftSize, r2cIn, r2cOut, FFTW_ESTIMATE);
+
+  // zero the buffers
+  for (int i = 0; i < ifftBuffers.size(); i++)
+    for (int j = 0; j < ifftBuffers[i].size(); j++)
+      for (int k = 0; k < ifftBuffers[i][j].size(); k++) ifftBuffers[i][j][k] = 0;
+
+  binSize = audioIO().framesPerSecond() / fftSize;
 
   std::cout << "onCreate() - Graphics context now available" << std::endl;
 }
 
 void QHOS::onAnimate(double dt) {
   simTime += dt * simSpeed;
+  if (automeasure) automeasureTimer += dt;
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   waveFunctionPlot.vertices().clear();
   probabilityPlot.vertices().clear();
   samples.vertices().clear();
-  wavetableLock.lock();
+  momentumPlot.vertices().clear();
+
+  // wavetableLock.lock();
   for (int i = 0; i < resolution; i++) {
     psiValues[i] = psi.evaluate(posValues[i], simTime);
     reValues[i] = psiValues[i].real();
@@ -225,12 +320,84 @@ void QHOS::onAnimate(double dt) {
     waveFunctionPlot.vertex(posValues[i], reValues[i], imValues[i]);
     probabilityPlot.vertex(posValues[i], probValues[i], 0);
   }
-  wavetableLock.unlock();
-  std::discrete_distribution<int> measurement(probValues.begin(), probValues.end());
-  int measurementPoint = measurement(generator);
-  samplePoints[sampleCounter] = Vec3d(posValues[measurementPoint], 0, 0);
+
+  // fftw_execute(c2cForward);
+  // for (int i = 0; i < dim; i++) {
+  //   momentumPlot.vertex(posValues[i], c2cForwardOut[i][0] / resolution,
+  //                       c2cForwardOut[i][1] / resolution);
+  // }
+  for (int chan = 0; chan < 2; chan++)
+    if (sourceSelect[chan] >= 4) {
+      for (int i = 0; i < fftSize / 2 + 1; i++) {
+        c2rIn[i][0] = 0;
+        c2rIn[i][1] = 0;
+      }
+      if (sourceSelect[chan] == 4) {
+        for (int i = 0; i < resolution; i++) {
+          double phase = uniform(gen);
+          c2rIn[i + (int)ifftCenterFreq][0] = cos(phase) * probValues[i] / (resolution / 2);
+          c2rIn[i + (int)ifftCenterFreq][1] = sin(phase) * probValues[i] / (resolution / 2);
+        }
+        fftw_execute(c2r);
+        for (int i = 0; i < bufferLen; i++) {
+          ifftBuffers[chan][(currentIfftBuffer[chan] + 1) % 4][i] = c2rOut[i];
+        }
+      } else if (sourceSelect[chan] == 5) {
+        for (int i = 0; i < resolution; i++) {
+          // double phase = uniform(gen);
+          c2rIn[i + 1][0] = reValues[i] / resolution;
+          c2rIn[i + 1][1] = imValues[i] / resolution;
+        }
+        fftw_execute(c2r);
+        for (int i = 0; i < M; i++) {  // maybe resolution + 1
+          r2cIn[i] = c2rOut[((fftSize - (M / 2)) + i) % fftSize] * filterKernelWindow[i];
+        }
+        for (int i = M; i < fftSize; i++) {
+          r2cIn[i] = 0;
+        }
+        fftw_execute(r2c);
+
+        c2rIn[0][0] = 0;
+        c2rIn[0][1] = 0;
+        c2rIn[fftSize / 2][0] = 0;
+        c2rIn[fftSize / 2][1] = 0;
+        for (int i = 1; i < fftSize / 2; i++) {
+          // float phase = uniform(gen);
+          // float magnitude = sqrt(pow(r2cOut[i][0], 2) + pow(r2cOut[i][1], 2));
+          // momentumPlot.vertex(posValues[i], r2cOut[i][0], r2cOut[i][1]);
+          // c2rIn[i][0] = cos(phase) * magnitude / M;
+          // c2rIn[i][1] = sin(phase) * magnitude / M;
+          c2rIn[i][0] = r2cOut[i][0] / M;
+          c2rIn[i][1] = r2cOut[i][1] / M;
+        }
+        fftw_execute(c2r);
+
+        for (int i = 0; i < bufferLen; i++) {
+          ifftBuffers[chan][(currentIfftBuffer[chan] + 1) % 4][i] = c2rOut[i];
+        }
+      }
+      for (int i = 0; i < bufferLen; i++)
+        momentumPlot.vertex(((i / (float)bufferLen) * 10.0f) - 5.0f, c2rOut[i], 0);
+    }
+
+  // wavetableLock.unlock();
+
+  if (automeasureTimer > automeasureInterval) {
+    measurementTrigger = 1;
+    automeasureTimer -= automeasureInterval;
+  }
+  if (measurementTrigger) {
+    std::discrete_distribution<> measurement(probValues.begin(), probValues.end());
+    measurementPoints[measurementPointsCounter] = Vec3d(posValues[measurement(gen)], 0, 0);
+    sampleDisplayTimer[measurementPointsCounter] = 20;
+    pannerTrigger[0] = 1;
+    pannerTrigger[1] = 1;
+  }
   for (int i = 0; i < 20; i++) {
-    samples.vertex(samplePoints[i]);
+    if (sampleDisplayTimer[i] > 0) {
+      samples.vertex(measurementPoints[i]);
+      sampleDisplayTimer[i] -= 1;
+    }
   }
   if (oscOn) {
     if (oscWaveform) {
@@ -258,19 +425,20 @@ void QHOS::onAnimate(double dt) {
     }
     if (oscMeasurement) {
       if (measurementTrigger) {
-        oscClient.send("/measurement", (float)posValues[measurementPoint]);
-        measurementTrigger = 0;
+        oscClient.send("/measurement", (float)measurementPoints[measurementPointsCounter][0]);
       }
     }
   }
-  sampleCounter = (sampleCounter + 1) % 20;
+  measurementPointsCounter = (measurementPointsCounter + 1) % 20;
+  measurementTrigger = 0;
 }
 
 void QHOS::onDraw(Graphics& g) {
   g.clear();
-
-  gl::blending(true);  // needed for transparency
-  gl::blendTrans();    // needed for transparency
+  // gl::depthTesting(true);
+  gl::blending(true);                                      // needed for transparency
+  gl::blendMode(GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD);  // needed for transparency
+  g.lighting(true);
 
   lineTexture.bind();  // texture binding
   g.meshColor();
@@ -279,6 +447,7 @@ void QHOS::onDraw(Graphics& g) {
   if (drawGrid) g.draw(grid);
   if (drawWavefunction) g.draw(waveFunctionPlot);
   if (drawProbability) g.draw(probabilityPlot);
+  if (drawMomentum) g.draw(momentumPlot);
   lineTexture.unbind();
 
   pointTexture.bind();
@@ -288,8 +457,9 @@ void QHOS::onDraw(Graphics& g) {
 
   if (drawGUI) {
     imguiBeginFrame();
+    int yposition = 0;
 
-    ParameterGUI::beginPanel("Simulation");
+    ParameterGUI::beginPanel("Simulation", 0, yposition, flags);
     ImGui::Text("Simulation Time: %.2f", simTime);
     ParameterGUI::drawParameter(&simSpeed);
     ParameterGUI::drawParameterInt(&dims, "");
@@ -304,37 +474,61 @@ void QHOS::onDraw(Graphics& g) {
       }
     } else {
       ParameterGUI::drawMenu(&presetFuncs);
+      ParameterGUI::drawParameterBool(&project);
       if (ImGui::CollapsingHeader("Coefficient Values"))
         for (int i = 0; i < psi.coefficients.size(); i++) {
           ImGui::Text("coefficient %i: %.10f ", i, psi.coefficients[i]);
         }
     }
+
+    yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
-    ParameterGUI::beginPanel("Audio");
+    ParameterGUI::beginPanel("Audio", 0, yposition, flags);
     ParameterGUI::drawParameterBool(&audioOn);
-    ParameterGUI::drawParameter(&freq);
+    ImGui::SameLine();
+    ParameterGUI::drawParameterBool(&panner);
     ParameterGUI::drawParameter(&volume);
-    ParameterGUI::drawMenu(&sourceOne);
-    ParameterGUI::drawMenu(&sourceTwo);
+    ParameterGUI::drawMenu(&sourceOneMenu);
+    ParameterGUI::drawMenu(&sourceTwoMenu);
+    if (!sourceSelect[0] || !sourceSelect[1]) {
+      ImGui::Text("Wavetable Synthesis");
+      ParameterGUI::drawParameter(&wavetableFreq);
+    }
+    if (sourceSelect[0] || sourceSelect[1]) {
+      ImGui::Text("Fourier Synthesis");
+      ParameterGUI::drawParameterInt(&ifftCenterFreq, "");
+      ParameterGUI::drawParameterInt(&ifftBandwidth, "x");
+    }
 
+    yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
-    ParameterGUI::beginPanel("Draw");
+    ParameterGUI::beginPanel("Draw", 0, yposition, flags);
     ParameterGUI::drawParameterBool(&drawGrid);
     ParameterGUI::drawParameterBool(&drawAxes);
     ParameterGUI::drawParameterBool(&drawWavefunction);
     ParameterGUI::drawParameterBool(&drawProbability);
+    ParameterGUI::drawParameterBool(&drawMomentum);
     ParameterGUI::drawParameterBool(&drawMeasurements);
 
+    yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
-    ParameterGUI::beginPanel("OSC");
+    ParameterGUI::beginPanel("OSC", 0, yposition, flags);
     ParameterGUI::drawParameterBool(&oscOn);
     ParameterGUI::drawParameterBool(&oscWaveform);
     ParameterGUI::drawParameterBool(&oscMeasurement);
-    ParameterGUI::drawParameterBool(&measurementTrigger);
 
+    yposition += ImGui::GetWindowHeight();
+    ParameterGUI::endPanel();
+
+    ParameterGUI::beginPanel("Measurement", 0, yposition, flags);
+    measurementTrigger = ImGui::Button("Measure", ImVec2(100, 20));
+    ParameterGUI::drawParameterBool(&automeasure);
+    ParameterGUI::drawParameter(&automeasureInterval);
+
+    yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
     imguiEndFrame();
@@ -347,32 +541,76 @@ void QHOS::onSound(al::AudioIOData& io) {
   // This is the sample loop
   while (io()) {
     if (audioOn) {
-      // increment table reader
-      tableReader += freq / (io.fps() / resolution);
-      // if table reader gets to the end of the table
-      if (tableReader >= resolution) {
-        // loop
-        tableReader -= resolution;
-        // update table
-        if (wavetableLock.try_lock()) {
-          wavetable[0] = *wavetableOneSource;
-          wavetable[1] = *wavetableTwoSource;
-          wavetableLock.unlock();
+      if (sourceSelect[0] <= 3 || sourceSelect[1] <= 3) {
+        // increment table reader
+        tableReader += wavetableFreq / (io.fps() / resolution);
+        // if table reader gets to the end of the table
+        if (tableReader >= resolution) {
+          // loop
+          tableReader -= resolution;
+          for (int chan = 0; chan < 2; chan++) {
+            // new panning
+            if (panner) {
+              if (pannerTrigger[chan]) {
+                if (sourceSelect[chan] <= 3) {
+                  pan[chan].setCurrentValue((measurementPoints[measurementPointsCounter].x / 10) +
+                                            0.5);
+                  pannerTrigger[chan] = false;
+                }
+              }
+            } else {
+              if (sourceSelect[chan] <= 3) pan[chan].setCurrentValue(chan);
+            }
+
+            // update table
+            wavetable[chan] = *source[chan];
+          }
+        }
+        // linear interpolation for table reads between indices
+        for (int i = 0; i < 2; i++) {
+          int j = floor(tableReader);
+          float x0 = wavetable[i][j];
+          float x1 =
+            wavetable[i][(j == (wavetable[i].size() - 1)) ? 0 : j + 1];  // wrapping at end of table
+          float t = tableReader - j;
+          if (sourceSelect[i] <= 3)
+            sample[i] = ((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
         }
       }
-      // output sample
-      float sample[2];
-      // linear interpolation for table reads between indices
-      for (int i = 0; i < 2; i++) {
-        int j = floor(tableReader);
-        float x0 = wavetable[i][j];
-        float x1 = wavetable[i][(j == (wavetable[i].size() - 1)) ? 0 : j + 1];  // looping semantics
-        float t = tableReader - j;
-        sample[i] = (x1 * t + x0 * (1 - t)) / 2;  // (divided by 2 because it's loud)
+      for (int chan = 0; chan < 2; chan++) {
+        if (sourceSelect[chan] >= 4) {
+          if (currentIfftSample[chan] >= bufferLen / 2) {
+            currentIfftSample[chan] = 0;
+            currentIfftBuffer[chan] = (currentIfftBuffer[chan] + 1) % 4;
+          }
+
+          float ifftsample = ifftBuffers[chan][currentIfftBuffer[chan]][currentIfftSample[chan]] *
+                               overlapAddWindow[currentIfftSample[chan]] +
+                             ifftBuffers[chan][(currentIfftBuffer[chan] + 3) % 4]
+                                        [currentIfftSample[chan] + bufferLen / 2] *
+                               overlapAddWindow[currentIfftSample[chan] + bufferLen / 2];
+
+          currentIfftSample[chan]++;
+          sample[chan] = ifftsample;
+
+          if (panner) {
+            if (pannerTrigger[chan])
+              if (ifftsample < 0.000001 || ifftsample > -0.000001) {
+                pan[chan].setTarget((measurementPoints[measurementPointsCounter].x / 10) + 0.5);
+                pannerTrigger[chan] = false;
+              }
+          } else {
+            pan[chan].setTarget(chan);
+          }
+        }
       }
+      for (int chan = 0; chan < 2; chan++) pan[chan].process();
       // output
-      io.out(0) = sample[0] * volume;
-      io.out(1) = sample[1] * volume;
+      io.out(0) = ((sample[0] * (1.0f - pan[0].getCurrentValue())) +
+                   (sample[1] * (1.0f - pan[1].getCurrentValue()))) *
+                  volume;
+      io.out(1) =
+        ((sample[0] * pan[0].getCurrentValue()) + (sample[1] * pan[1].getCurrentValue())) * volume;
     }
   }
 }
@@ -413,7 +651,7 @@ int main() {
   dev.print();
 
   QHOS app;
-  app.configureAudio(dev, dev.defaultSampleRate(), 512, dev.channelsOutMax(), dev.channelsInMax());
+  app.configureAudio(dev, dev.defaultSampleRate(), 1024, 2, 0);
   app.start();
   return 0;
 }

@@ -20,8 +20,7 @@ endif()
 
 # link allolib to project
 find_package(GSL REQUIRED)    # See below (2)
-target_link_libraries(${APP_NAME} PRIVATE al GSL::gsl GSL::gslcblas)
-
+target_link_libraries(${APP_NAME} PRIVATE al GSL::gsl GSL::gslcblas fftw3)
 
 
 # example line for find_package usage
