@@ -1,4 +1,4 @@
-#N canvas 680 38 1232 1009 12;
+#N canvas 1928 38 944 1009 12;
 #X obj 40 420 pulsar~;
 #X obj 420 840 dac~;
 #X obj 30 36 import mrpeach;
@@ -7,11 +7,11 @@
 #X obj 30 84 table imaginaryVals;
 #X obj 430 320 r pan;
 #X obj 370 170 tgl 20 0 measureOn empty Measurements 22 7 0 10 #fcfcfc
-#000000 #000000 0 1;
+#000000 #000000 1 1;
 #X msg 680 350 0 1 1 0 1;
 #X msg 197 354 1;
 #X msg 670 320 1;
-#N canvas 344 563 320 509 receiveOSC 0;
+#N canvas 904 548 1008 524 receiveOSC 0;
 #X obj 190 50 udpreceive 16447;
 #X obj 190 80 unpackOSC;
 #X obj 192 192 list prepend;
@@ -84,7 +84,7 @@
 #X connect 31 1 30 0;
 #X connect 32 0 20 0;
 #X restore 370 200 pd receiveOSC;
-#N canvas 680 563 1232 484 alternate 0;
+#N canvas 904 548 1008 524 alternate 0;
 #X obj 350 130 inlet;
 #X obj 260 460 outlet;
 #X obj 310 460 outlet;
@@ -95,7 +95,7 @@
 #X obj 370 290 % 2;
 #X obj 372 212 t b f;
 #X obj 230 66 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000
-#000000 0 1;
+#000000 1 1;
 #X obj 370 180 spigot;
 #X obj 290 210 spigot;
 #X obj 240 150 + 1;
@@ -234,11 +234,20 @@
 #X coords 0 -1 1 1 388 46 1 76 238;
 #X restore 50 230 pd midi;
 #X msg 200 380 1 0 0;
+#X obj 640 818 writesf~;
+#X msg 544 705 start;
+#X msg 600 707 stop;
+#X floatatom 550 236 5 0 0 0 - - -, f 5;
+#X floatatom 40 657 5 0 0 0 - - -, f 5;
+#X floatatom 40 685 5 0 0 0 - - -, f 5;
+#X floatatom 280 374 5 0 0 0 - - -, f 5;
+#X msg 703 756 open -bytes 3 ~/quantumPulsarGestures4;
 #X connect 0 0 1 0;
 #X connect 0 1 1 1;
 #X connect 4 0 1 0;
 #X connect 4 1 1 1;
 #X connect 6 0 12 0;
+#X connect 6 0 23 0;
 #X connect 8 0 4 3;
 #X connect 9 0 0 3;
 #X connect 10 0 4 3;
@@ -252,3 +261,8 @@
 #X connect 15 2 4 0;
 #X connect 15 3 4 1;
 #X connect 16 0 0 3;
+#X connect 18 0 17 0;
+#X connect 19 0 17 0;
+#X connect 20 0 4 1;
+#X connect 21 0 22 0;
+#X connect 24 0 17 0;

@@ -1,12 +1,16 @@
 cmake_minimum_required(VERSION 3.0)
 
-project(QHOS)
 
-# name of application. replace 'app' with desired app name
-set(APP_NAME QHOS)
+# name of application
+set(APP_NAME QHOSYN)
+
+project(${APP_NAME} VERSION 0.8
+DESCRIPTION "Quantum Harmonic Oscillator Synthesizer"
+LANGUAGES CXX)
+
 
 # path to main source file
-add_executable(${APP_NAME} src/QHOS.cpp)
+add_executable(${APP_NAME} src/QHOSYN.cpp)
 
 # add allolib as a subdirectory to the project
 add_subdirectory(allolib)

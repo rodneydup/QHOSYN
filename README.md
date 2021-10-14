@@ -1,4 +1,4 @@
-# QHOS
+# QHOSYN
 
 # Building
 
@@ -13,8 +13,8 @@ cmake version 3.0 or higher
 ## How to setup
 On a bash shell:
 
-    git clone https://github.com/rodneydup/QHOS
-    cd QHOS
+    git clone https://github.com/rodneydup/QHOSYN
+    cd QHOSYN
     ./configure.sh
     ./run.sh
 

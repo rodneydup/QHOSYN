@@ -12,20 +12,20 @@
 #include <vector>
 
 #include "Gamma/DFT.h"
+#include "Gamma/Filter.h"
 #include "al/app/al_App.hpp"
 #include "al/graphics/al_Shapes.hpp"
 #include "al/io/al_MIDI.hpp"
 #include "al/ui/al_ControlGUI.hpp"
 #include "al/ui/al_Parameter.hpp"
-#include "constant-q/cq.h"
 
-// QHOS
+// QHOSYN
 #include "Wavefunction.hpp"
 #include "shadercode.hpp"
 
 using namespace al;
 
-class QHOS : public App, public MIDIMessageHandler {
+class QHOSYN : public App, public MIDIMessageHandler {
  public:
   /**
    * @brief Initilialize the synth interface.
@@ -102,26 +102,27 @@ class QHOS : public App, public MIDIMessageHandler {
   ParameterBool coeffList{"Manual Coefficient Entry", "", 0};
   ParameterMenu presetFuncs{"Function Presets"};
   ParameterBool project{"Project in Orthogonal Basis", "", 1};
-  Parameter simSpeed{"simulation speed", 1.0, -5.0, 5.0};
+  Parameter simSpeed{"Simulation Speed", 1.0, -5.0, 5.0};
 
   // audio parameters
   ParameterBool audioOn{"Audio On", "", 0};
   ParameterBool panner{"Panner", "", 0};
   bool pannerTrigger[2] = {0, 0};
   Parameter wavetableFreq{"Wavetable Frequency", 200, 10, 1000};
-  ParameterInt ifftCenterFreq{"Start Bin", "", 1, "Bin ", 1, fftSize / 2};
-  ParameterInt ifftBandwidth{"Bandwidth", "", 1, 1, 32};
+  ParameterInt ifftBin{"Start Bin", "", 1, "Bin ", 1, fftSize / 4};
+  ParameterInt ifftBandwidth{"Bandwidth", "", 1, "", 1, 16};
   Parameter volume{"Volume", 0.0, 0, 1};
   ParameterMenu sourceOneMenu{"Channel 1 source"};
   ParameterMenu sourceTwoMenu{"Channel 2 source"};
-  SmoothValue<float> pan[2]{{20, "log"}, {20, "log"}};
+  SmoothValue<float> pan[2];
 
   // drawing parameters
   ParameterBool drawGrid{"Grid", "", 1};
   ParameterBool drawAxes{"Axes", "", 1};
   ParameterBool drawWavefunction{"Wave function", "", 1};
   ParameterBool drawProbability{"Probability", "", 1};
-  ParameterBool drawMomentum{"Momentum Distribution", "", 1};
+  ParameterBool drawIfft{"IFFT Waveform", "", 1};
+  ParameterBool drawNoise{"Noise Waveform", "", 1};
 
   ParameterBool drawMeasurements{"Measurements", "", 1};
 
@@ -134,6 +135,10 @@ class QHOS : public App, public MIDIMessageHandler {
   ParameterBool measurementTrigger{"Measure", "", 0};
   ParameterBool automeasure{"Auto-measure", "", 0};
   Parameter automeasureInterval{"Auto-measure Interval (s)", 0.1, 0.016, 2};
+
+  gam::Biquad<> filter[2];
+  gam::Biquad<> antiAlias[2];
+  ParameterBool filterOn{"Filter", "", 0};
 
   // custom wrapper for double precision imgui sliders
   bool SliderDouble(const char* label, double* v, double v_min, double v_max,
@@ -187,10 +192,8 @@ class QHOS : public App, public MIDIMessageHandler {
   fftw_complex* c2cForwardIn;
   fftw_complex* c2cForwardOut;
   fftw_plan c2cForward;
-  Mesh momentumPlot;
-
-  std::ofstream testOut{"test.csv"};
-  // std::ofstream outputpost{"post-ifft.csv"};
+  Mesh ifftPlot;
+  Mesh noisePlot;
 
   static const int bufferLen = fftSize / 4;
   std::array<std::array<std::array<float, bufferLen>, 4>, 2> ifftBuffers;
@@ -217,20 +220,29 @@ class QHOS : public App, public MIDIMessageHandler {
   std::uniform_real_distribution<> uniform{0, 1000};
 
   // OSC stuff
+  osc::Send* oscClient;                     // create an osc client (broadcaster)
+  int oscClientPort = 16447;                // osc port
+  std::string oscClientAddr = "127.0.0.1";  // ip address
 
-  int oscClientPort = 16447;             // osc port
-  char oscClientAddr[10] = "127.0.0.1";  // ip address
-  int oscServerPort = 16448;             // osc port
-  char oscServerAddr[10] = "127.0.0.1";  // ip address
-  osc::Send oscClient;                   // create an osc client (broadcaster)
-  osc::Recv oscServer;                   // create an osc Server (listener)
+  osc::Recv* oscServer;                     // create an osc Server (listener)
+  int oscServerPort = 16448;                // osc port
+  std::string oscServerAddr = "127.0.0.1";  // ip address
+  float oscServerTimeout = 0.02;
 
   void resetOSC() {
-    oscClient.open(oscClientPort, oscClientAddr);
-    std::cout << "New OSC port Selected: \n" + oscClientPort << std::endl;
-    std::cout << oscClientAddr << std::endl;
+    oscServer->stop();
+    oscServer->open(oscServerPort, oscServerAddr.c_str(), oscServerTimeout);
+    oscServer->handler(oscDomain()->handler());
+    oscServer->start();
+    std::cout << "OSC Server (Listener) Settings:" << std::endl;
+    std::cout << "IP Address: " << oscServerAddr << std::endl;
+    std::cout << "Port: " << oscServerPort << std::endl;
+    std::cout << "Timeout: " << oscServerTimeout << std::endl;
+    oscClient->open(oscClientPort, oscClientAddr.c_str());
+    std::cout << "OSC Client (Broadcaster) Settings:" << std::endl;
+    std::cout << "IP Address: " << oscClientAddr << std::endl;
+    std::cout << "Port: " << oscClientPort << std::endl;
   }
-
   // MIDI stuff
 
   RtMidiIn midiIn;

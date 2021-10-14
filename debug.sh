@@ -8,5 +8,5 @@
 
 result=$?
 if [ ${result} == 0 ]; then
-  gdb -ex run ./bin/QHOS
+  gdb -ex run ./bin/QHOSYN
 fi

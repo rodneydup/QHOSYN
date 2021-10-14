@@ -9,11 +9,11 @@ To do:
 */
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
-#include "QHOS.hpp"
+#include "QHOSYN.hpp"
 
-void QHOS::onInit() {
-  title("QHOS");
-  audioIO().setStreamName("QHOS");
+void QHOSYN::onInit() {
+  title("QHOSYN");
+  audioIO().setStreamName("QHOSYN");
   srand(std::time(0));
   emptyTable.fill(0);
 
@@ -87,7 +87,7 @@ void QHOS::onInit() {
   });
 
   sourceOneMenu.setElements({"none", "Real Wavetable", "Imaginary Wavetable",
-                             "Probability Wavetable", "Probability Noise-Band",
+                             "Probability Wavetable", "Probability Shaped Noise",
                              "Inverse Fourier Transform"});
   sourceOneMenu.registerChangeCallback([&](int x) {
     sourceSelect[0] = 0;
@@ -117,7 +117,7 @@ void QHOS::onInit() {
   sourceOneMenu.set(1);
 
   sourceTwoMenu.setElements({"none", "Real Wavetable", "Imaginary Wavetable",
-                             "Probability Wavetable", "Probability Noise-Band",
+                             "Probability Wavetable", "Probability Shaped Noise",
                              "Inverse Fourier Transform"});
   sourceTwoMenu.registerChangeCallback([&](int x) {
     sourceSelect[1] = 0;
@@ -146,8 +146,6 @@ void QHOS::onInit() {
   });
   sourceTwoMenu.set(2);
 
-  oscClient.open(oscClientPort, oscClientAddr);
-
   // Check for connected MIDI devices
   if (midiIn.getPortCount() > 0) {
     // Bind ourself to the RtMidiIn object, to have the onMidiMessage()
@@ -165,26 +163,20 @@ void QHOS::onInit() {
   std::cout << "onInit() - All domains have been initialized " << std::endl;
 }
 
-void QHOS::onCreate() {
+void QHOSYN::onCreate() {
   navControl().useMouse(false);
   nav().pos(Vec3f(1, 1, 12));
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   nav().setHome();
 
-  // port, address, timeout
-  // "" as address for localhost
-  oscServer.open(oscServerPort, oscServerAddr, 0.05);
-
-  // Register ourself (osc::PacketHandler) with the server so onMessage
-  // gets called.
-  oscServer.handler(oscDomain()->handler());
-
-  // Start a thread to handle incoming packets
-  oscServer.start();
+  oscClient = new osc::Send;
+  oscServer = new osc::Recv(oscServerPort, oscServerAddr.c_str(), oscServerTimeout);
+  resetOSC();
 
   waveFunctionPlot.primitive(Mesh::LINE_STRIP);
   probabilityPlot.primitive(Mesh::LINE_STRIP);
-  momentumPlot.primitive(Mesh::LINE_STRIP);
+  noisePlot.primitive(Mesh::LINE_STRIP);
+  ifftPlot.primitive(Mesh::LINE_STRIP);
   axes.primitive(Mesh::LINES);
   axes.vertex(-5, 0, 0);
   axes.vertex(5, 0, 0);
@@ -262,9 +254,11 @@ void QHOS::onCreate() {
     probabilityPlot.color(0.0, 0.0, 1.0, 0.9);   // add color for each vertex
   }
 
-  for (int i = 0; i < fftSize; i++) {
-    momentumPlot.texCoord(1.0, 0.0);
-    momentumPlot.color(0.0, 1.0, 0.0, 0.9);
+  for (int i = 0; i < bufferLen; i++) {
+    ifftPlot.texCoord(1.0, 0.0);
+    noisePlot.texCoord(1.0, 0.0);
+    ifftPlot.color(0.0, 1.0, 1.0, 0.9);
+    noisePlot.color(1.0, 1.0, 0.0, 0.9);
   }
 
   for (int i = 0; i < 20; i++) {
@@ -299,17 +293,28 @@ void QHOS::onCreate() {
 
   binSize = audioIO().framesPerSecond() / fftSize;
 
+  for (int chan = 0; chan < 2; chan++) {
+    pan[chan].changeType("lin");
+    pan[chan].setTime(16.0f);
+    filter[chan].type(gam::RESONANT);
+    filter[chan].res(2);
+    antiAlias[chan].type(gam::LOW_PASS);
+    antiAlias[chan].res(0.5);
+    antiAlias[chan].freq(15000);
+  }
+
   std::cout << "onCreate() - Graphics context now available" << std::endl;
 }
 
-void QHOS::onAnimate(double dt) {
+void QHOSYN::onAnimate(double dt) {
   simTime += dt * simSpeed;
   if (automeasure) automeasureTimer += dt;
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   waveFunctionPlot.vertices().clear();
   probabilityPlot.vertices().clear();
   samples.vertices().clear();
-  momentumPlot.vertices().clear();
+  ifftPlot.vertices().clear();
+  noisePlot.vertices().clear();
 
   // wavetableLock.lock();
   for (int i = 0; i < resolution; i++) {
@@ -333,20 +338,43 @@ void QHOS::onAnimate(double dt) {
         c2rIn[i][1] = 0;
       }
       if (sourceSelect[chan] == 4) {
-        for (int i = 0; i < resolution; i++) {
-          double phase = uniform(gen);
-          c2rIn[i + (int)ifftCenterFreq][0] = cos(phase) * probValues[i] / (resolution / 2);
-          c2rIn[i + (int)ifftCenterFreq][1] = sin(phase) * probValues[i] / (resolution / 2);
+        for (int i = ifftBin; i < ifftBin + (resolution * ifftBandwidth); i++) {
+          if (i < fftSize / 2) {
+            double phase = uniform(gen);
+            float t = (i - ifftBin) / (float)ifftBandwidth;
+            float temp;
+            float value = ((probValues[floor(t)] * (1.0f - modf(t, &temp))) +
+                           (probValues[floor(t) + 1] * modf(t, &temp))) /
+                          2.0f;
+            c2rIn[i][0] = cos(phase) * value / (resolution / 8) / dims;
+            c2rIn[i][1] = sin(phase) * value / (resolution / 8) / dims;
+          } else {
+            break;
+          }
         }
         fftw_execute(c2r);
         for (int i = 0; i < bufferLen; i++) {
           ifftBuffers[chan][(currentIfftBuffer[chan] + 1) % 4][i] = c2rOut[i];
         }
+        if (noisePlot.vertices().size() == 0) {
+          for (int i = 0; i < bufferLen; i++) {
+            noisePlot.vertex(((i / (float)bufferLen) * 10.0f) - 5.0f, c2rOut[i], 0);
+          }
+        }
       } else if (sourceSelect[chan] == 5) {
-        for (int i = 0; i < resolution; i++) {
-          // double phase = uniform(gen);
-          c2rIn[i + 1][0] = reValues[i] / resolution;
-          c2rIn[i + 1][1] = imValues[i] / resolution;
+        for (int i = ifftBin; i < ifftBin + (resolution * ifftBandwidth); i++) {
+          if (i < fftSize / 2) {
+            float t = (i - ifftBin) / (float)ifftBandwidth;
+            float temp;
+            float reVal = ((reValues[floor(t)] * (1.0f - modf(t, &temp))) +
+                           (reValues[floor(t) + 1] * modf(t, &temp))) /
+                          2.0f;
+            float imVal = ((imValues[floor(t)] * (1.0f - modf(t, &temp))) +
+                           (imValues[floor(t) + 1] * modf(t, &temp))) /
+                          2.0f;
+            c2rIn[i][0] = reVal / (M / 8) / dims;
+            c2rIn[i][1] = imVal / (M / 8) / dims;
+          }
         }
         fftw_execute(c2r);
         for (int i = 0; i < M; i++) {  // maybe resolution + 1
@@ -375,12 +403,13 @@ void QHOS::onAnimate(double dt) {
         for (int i = 0; i < bufferLen; i++) {
           ifftBuffers[chan][(currentIfftBuffer[chan] + 1) % 4][i] = c2rOut[i];
         }
+        if (ifftPlot.vertices().size() == 0) {
+          for (int i = 0; i < bufferLen; i++) {
+            ifftPlot.vertex(((i / (float)bufferLen) * 10.0f) - 5.0f, c2rOut[i], 0);
+          }
+        }
       }
-      for (int i = 0; i < bufferLen; i++)
-        momentumPlot.vertex(((i / (float)bufferLen) * 10.0f) - 5.0f, c2rOut[i], 0);
     }
-
-  // wavetableLock.unlock();
 
   if (automeasureTimer > automeasureInterval) {
     measurementTrigger = 1;
@@ -405,27 +434,27 @@ void QHOS::onAnimate(double dt) {
       p.beginMessage("/realValues/firstHalf");
       for (int i = 0; i < 128; i++) p << (float)reValues[i];
       p.endMessage();
-      oscClient.send(p);
+      oscClient->send(p);
       p.clear();
       p.beginMessage("/realValues/secondHalf");
       for (int i = 128; i < 256; i++) p << (float)reValues[i];
       p.endMessage();
-      oscClient.send(p);
+      oscClient->send(p);
 
       p.clear();
       p.beginMessage("/imaginaryValues/firstHalf");
       for (int i = 0; i < 128; i++) p << (float)imValues[i];
       p.endMessage();
-      oscClient.send(p);
+      oscClient->send(p);
       p.clear();
       p.beginMessage("/imaginaryValues/secondHalf");
       for (int i = 128; i < 256; i++) p << (float)imValues[i];
       p.endMessage();
-      oscClient.send(p);
+      oscClient->send(p);
     }
     if (oscMeasurement) {
       if (measurementTrigger) {
-        oscClient.send("/measurement", (float)measurementPoints[measurementPointsCounter][0]);
+        oscClient->send("/measurement", (float)measurementPoints[measurementPointsCounter][0]);
       }
     }
   }
@@ -433,7 +462,7 @@ void QHOS::onAnimate(double dt) {
   measurementTrigger = 0;
 }
 
-void QHOS::onDraw(Graphics& g) {
+void QHOSYN::onDraw(Graphics& g) {
   g.clear();
   // gl::depthTesting(true);
   gl::blending(true);                                      // needed for transparency
@@ -447,7 +476,9 @@ void QHOS::onDraw(Graphics& g) {
   if (drawGrid) g.draw(grid);
   if (drawWavefunction) g.draw(waveFunctionPlot);
   if (drawProbability) g.draw(probabilityPlot);
-  if (drawMomentum) g.draw(momentumPlot);
+  if (drawIfft) g.draw(ifftPlot);
+  if (drawNoise) g.draw(noisePlot);
+
   lineTexture.unbind();
 
   pointTexture.bind();
@@ -489,6 +520,7 @@ void QHOS::onDraw(Graphics& g) {
     ImGui::SameLine();
     ParameterGUI::drawParameterBool(&panner);
     ParameterGUI::drawParameter(&volume);
+    ParameterGUI::drawParameterBool(&filterOn);
     ParameterGUI::drawMenu(&sourceOneMenu);
     ParameterGUI::drawMenu(&sourceTwoMenu);
     if (!sourceSelect[0] || !sourceSelect[1]) {
@@ -497,8 +529,8 @@ void QHOS::onDraw(Graphics& g) {
     }
     if (sourceSelect[0] || sourceSelect[1]) {
       ImGui::Text("Fourier Synthesis");
-      ParameterGUI::drawParameterInt(&ifftCenterFreq, "");
-      ParameterGUI::drawParameterInt(&ifftBandwidth, "x");
+      ParameterGUI::drawParameterInt(&ifftBin, "");
+      ParameterGUI::drawParameterInt(&ifftBandwidth, "");
     }
 
     yposition += ImGui::GetWindowHeight();
@@ -509,7 +541,8 @@ void QHOS::onDraw(Graphics& g) {
     ParameterGUI::drawParameterBool(&drawAxes);
     ParameterGUI::drawParameterBool(&drawWavefunction);
     ParameterGUI::drawParameterBool(&drawProbability);
-    ParameterGUI::drawParameterBool(&drawMomentum);
+    ParameterGUI::drawParameterBool(&drawIfft);
+    ParameterGUI::drawParameterBool(&drawNoise);
     ParameterGUI::drawParameterBool(&drawMeasurements);
 
     yposition += ImGui::GetWindowHeight();
@@ -537,11 +570,14 @@ void QHOS::onDraw(Graphics& g) {
   }
 }
 
-void QHOS::onSound(al::AudioIOData& io) {
+void QHOSYN::onSound(al::AudioIOData& io) {
   // This is the sample loop
   while (io()) {
     if (audioOn) {
       if (sourceSelect[0] <= 3 || sourceSelect[1] <= 3) {
+        filter[0].freq(wavetableFreq * dims);
+        filter[1].freq(wavetableFreq * dims);
+
         // increment table reader
         tableReader += wavetableFreq / (io.fps() / resolution);
         // if table reader gets to the end of the table
@@ -567,14 +603,19 @@ void QHOS::onSound(al::AudioIOData& io) {
           }
         }
         // linear interpolation for table reads between indices
-        for (int i = 0; i < 2; i++) {
+        for (int chan = 0; chan < 2; chan++) {
           int j = floor(tableReader);
-          float x0 = wavetable[i][j];
+          float x0 = wavetable[chan][j];
           float x1 =
-            wavetable[i][(j == (wavetable[i].size() - 1)) ? 0 : j + 1];  // wrapping at end of table
+            wavetable[chan]
+                     [(j == (wavetable[chan].size() - 1)) ? 0 : j + 1];  // wrapping at end of table
           float t = tableReader - j;
-          if (sourceSelect[i] <= 3)
-            sample[i] = ((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
+          if (sourceSelect[chan] <= 3)
+            if (filterOn)
+              sample[chan] =
+                filter[chan]((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
+            else
+              sample[chan] = ((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
         }
       }
       for (int chan = 0; chan < 2; chan++) {
@@ -606,16 +647,17 @@ void QHOS::onSound(al::AudioIOData& io) {
       }
       for (int chan = 0; chan < 2; chan++) pan[chan].process();
       // output
-      io.out(0) = ((sample[0] * (1.0f - pan[0].getCurrentValue())) +
-                   (sample[1] * (1.0f - pan[1].getCurrentValue()))) *
+      io.out(0) = antiAlias[0]((sample[0] * (1.0f - pan[0].getCurrentValue())) +
+                               (sample[1] * (1.0f - pan[1].getCurrentValue()))) *
                   volume;
-      io.out(1) =
-        ((sample[0] * pan[0].getCurrentValue()) + (sample[1] * pan[1].getCurrentValue())) * volume;
+      io.out(1) = antiAlias[1]((sample[0] * pan[0].getCurrentValue()) +
+                               (sample[1] * pan[1].getCurrentValue())) *
+                  volume;
     }
   }
 }
 
-bool QHOS::onKeyDown(Keyboard const& k) {
+bool QHOSYN::onKeyDown(Keyboard const& k) {
   switch (k.key()) {
     case 'g':
       drawGUI = 1 - drawGUI;
@@ -629,12 +671,12 @@ bool QHOS::onKeyDown(Keyboard const& k) {
   return true;
 }
 
-void QHOS::onResize(int w, int h) {
+void QHOSYN::onResize(int w, int h) {
   updateFBO(width(), height());
   //
 }
 
-void QHOS::onMessage(osc::Message& m) {
+void QHOSYN::onMessage(osc::Message& m) {
   // Check that the address and tags match what we expect
   if (m.addressPattern() == "/measure" && m.typeTags() == "si") {
     // Extract the data out of the packet
@@ -650,7 +692,7 @@ int main() {
   AudioDevice dev = AudioDevice::defaultOutput();
   dev.print();
 
-  QHOS app;
+  QHOSYN app;
   app.configureAudio(dev, dev.defaultSampleRate(), 1024, 2, 0);
   app.start();
   return 0;

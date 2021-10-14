@@ -18,5 +18,5 @@ fi
 
 result=$?
 if [ ${result} == 0 ]; then
-  ./bin/QHOS
+  ./bin/QHOSYN
 fi
