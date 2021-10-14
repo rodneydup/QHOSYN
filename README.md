@@ -2,7 +2,7 @@
 
 QHOSYN (Pronounced "cosine") is the Quantum Harmonic Oscillator Synthesizer.
 
-![](./QHOSYN_thumbnail.png)
+![](./QHOSYN_demo.gif)
 
 The software employs an accurate quantum simulation of an observable in a superposition of eigenstates up to the n=15 energy level. It can be used to generate evolving stochastic sound and control signals directly using a quantum wave function based on the time-dependent Schrödinger equation. Through sonic exploration, the user can generate "quantum sounds" and gain an aesthetic understanding of quantum space.
 
