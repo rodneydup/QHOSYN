@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=QHOSYN
+Comment=Launch QHOSYN
+Exec=QHOSYN
+Icon=/usr/share/pixmaps/QHOSYN.png
+Terminal=false
+Type=Application
+Categories=Audio;Music;Science;
+Name[en_US]=QHOSYN

@@ -194,7 +194,8 @@ class RingBuffer {
   // get RMS value over a number of elements before mWriteHead
   T getRMS(unsigned lookBackLength) {
     if (lookBackLength > mBufferSize) {
-      std::cerr << "Lookback length must be less than ringbuffer size. Setting lookback to length "
+      std::cerr << "Lookback length must be less than ringbuffer size. Setting lookback "
+                   "to length "
                    "of ringbuffer"
                 << std::endl;
       lookBackLength = mBufferSize;

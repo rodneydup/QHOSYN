@@ -21,6 +21,7 @@ class HilbertSpace {
     dim = dimensions;
     calcEigenBasis();
   }
+
   HilbertSpace(int dimensions) {
     dim = dimensions;
     calcEigenBasis();
@@ -46,7 +47,8 @@ class HilbertSpace {
   }
 
   std::vector<std::unique_ptr<SampleFunction>> qhoBasisApprox;
-  int dim;  // dimensions of the hilbert space (effectively the number of superposed energy states)
+  int dim;              // dimensions of the hilbert space (effectively the number of superposed
+                        // energy states)
   double (*v)(double);  // hamiltonian operator
 };
 
@@ -54,9 +56,10 @@ class HilbertSpace {
 class WaveFunction {
  public:
   WaveFunction(
-    HilbertSpace *hs, std::function<double(double)> initWaveFunc = [](double x) { return 1.0; },
+    HilbertSpace *hs, int dimensions,
+    std::function<double(double)> initWaveFunc = [](double x) { return 1.0; },
     std::vector<double> coeff = {}, bool project = 1) {
-    newHilbertSpace(hs, initWaveFunc, coeff, project);
+    newHilbertSpace(hs, dimensions, initWaveFunc, coeff, project);
   }
 
   // calculate phase
@@ -64,10 +67,11 @@ class WaveFunction {
     return exp(-1i * hilbertSpace->eigenvalues(n) * t);
   }
 
-  // Lookup value from wavefuntion for time t at position value x, summing over eigenstates
+  // Lookup value from wavefuntion for time t at position value x, summing over
+  // eigenstates
   std::complex<double> wavefunc(double x, double t) {
     std::complex<double> sum = (0, 0);
-    for (int n = 0; n < hilbertSpace->dim; n++)
+    for (int n = 0; n < eigenStates; n++)
       sum += coefficients[n] * hilbertSpace->eigenbasis(n, x) * phaseFactor(n, t);
     return sum;
   }
@@ -90,7 +94,7 @@ class WaveFunction {
   // get the coefficients from an orthogonal basis projection of the initial function
   std::vector<double> orthogonalBasisProjection(std::function<double(double x)> waveFunc) {
     std::vector<double> tempCoeff;
-    tempCoeff.resize(hilbertSpace->dim);
+    tempCoeff.resize(eigenStates);
 
     gsl_integration_cquad_workspace *orthoW = gsl_integration_cquad_workspace_alloc(1000);
     for (int i = 0; i < tempCoeff.size(); i++) {
@@ -109,8 +113,10 @@ class WaveFunction {
 
   // instantiate a new hilbert space
   void newHilbertSpace(
-    HilbertSpace *hs, std::function<double(double x)> initWaveFunc = [](double x) { return 1.0; },
+    HilbertSpace *hs, int dimensions,
+    std::function<double(double x)> initWaveFunc = [](double x) { return 1.0; },
     std::vector<double> coeff = {}, bool project = 1) {
+    eigenStates = dimensions;
     hilbertSpace = hs;
     if (!coeff.empty()) {
       coefficients = coeff;
@@ -118,16 +124,17 @@ class WaveFunction {
       if (project) {
         coefficients = orthogonalBasisProjection(initWaveFunc);
       } else {
-        for (int i = 0; i < hilbertSpace->dim; i++) coefficients[i] = initWaveFunc(i);
+        for (int i = 0; i < eigenStates; i++) coefficients[i] = initWaveFunc(i);
       }
     }
     normalize();
   }
 
-  // collapse the wavefunction, would need to find a numerical solution to make this work in
-  // real-time and continue evolving.
+  // collapse the wavefunction, would need to find a numerical solution to make this work
+  // in real-time and continue evolving.
   void collapse() {}
 
+  int eigenStates;
   double integrationResult;
   double normF;
   HilbertSpace *hilbertSpace;

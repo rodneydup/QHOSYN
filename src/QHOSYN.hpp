@@ -1,7 +1,12 @@
+/*
+Quantum Harmonic Oscillator Synthesizer (QHOSYN)
+By Rodney DuPlessis (2021)
+*/
+
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
+// C libraries
 #include <complex.h>
-#include <fftw3.h>
 #include <time.h>
 
 #include <fstream>
@@ -11,17 +16,25 @@
 #include <random>
 #include <vector>
 
-#include "Gamma/DFT.h"
+// Native File Dialog
+#include "../external/nativefiledialog/src/include/nfd.h"
+
+// FFTW
+#include <fftw3.h>
+
+// Allolib
 #include "Gamma/Filter.h"
+#include "Gamma/tbl.h"
 #include "al/app/al_App.hpp"
 #include "al/graphics/al_Shapes.hpp"
 #include "al/io/al_MIDI.hpp"
 #include "al/ui/al_ControlGUI.hpp"
 #include "al/ui/al_Parameter.hpp"
+#include "al_ext/soundfile/al_OutputRecorder.hpp"
 
 // QHOSYN
-#include "Wavefunction.hpp"
 #include "shadercode.hpp"
+#include "wavefunction.hpp"
 
 using namespace al;
 
@@ -57,6 +70,8 @@ class QHOSYN : public App, public MIDIMessageHandler {
   virtual bool onKeyDown(al::Keyboard const& k) override;
 
   void onMessage(osc::Message& m) override;
+
+  static const int MAX_AUDIO_OUTS = 2;
 
   // Meshes for visual display
   Mesh waveFunctionPlot;  // complex valued wave function
@@ -98,7 +113,7 @@ class QHOSYN : public App, public MIDIMessageHandler {
                            ImGuiWindowFlags_AlwaysAutoResize | ImGuiCond_Once;
 
   // simulation parameters
-  ParameterInt dims{"Dimensions", "", 2, "", 1, 15};
+  ParameterInt dims{"Eigenstates", "", 2, "", 1, 15};
   ParameterBool coeffList{"Manual Coefficient Entry", "", 0};
   ParameterMenu presetFuncs{"Function Presets"};
   ParameterBool project{"Project in Orthogonal Basis", "", 1};
@@ -108,7 +123,7 @@ class QHOSYN : public App, public MIDIMessageHandler {
   ParameterBool audioOn{"Audio On", "", 0};
   ParameterBool panner{"Panner", "", 0};
   bool pannerTrigger[2] = {0, 0};
-  Parameter wavetableFreq{"Wavetable Frequency", 200, 10, 1000};
+  Parameter wavetableFreq{"Frequency", 200, 10, 1000};
   ParameterInt ifftBin{"Start Bin", "", 1, "Bin ", 1, fftSize / 4};
   ParameterInt ifftBandwidth{"Bandwidth", "", 1, "", 1, 16};
   Parameter volume{"Volume", 0.0, 0, 1};
@@ -121,24 +136,24 @@ class QHOSYN : public App, public MIDIMessageHandler {
   ParameterBool drawAxes{"Axes", "", 1};
   ParameterBool drawWavefunction{"Wave function", "", 1};
   ParameterBool drawProbability{"Probability", "", 1};
-  ParameterBool drawIfft{"IFFT Waveform", "", 1};
+  ParameterBool drawIfft{"Inverse Fourier Waveform", "", 1};
   ParameterBool drawNoise{"Noise Waveform", "", 1};
-
   ParameterBool drawMeasurements{"Measurements", "", 1};
 
   // OSC parameters
-  ParameterBool oscOn{"OSC On", "OSC", 0};
+  ParameterBool oscSenderOn{"OSC Sender On", "OSC", 0};
+  ParameterBool oscReceiverOn{"OSC Receiver On", "OSC", 0};
   ParameterBool oscWaveform{"Send Waveform", "OSC", 0};
   ParameterBool oscMeasurement{"Send Measurements", "OSC", 0};
 
   // Measurement parameters
   ParameterBool measurementTrigger{"Measure", "", 0};
   ParameterBool automeasure{"Auto-measure", "", 0};
-  Parameter automeasureInterval{"Auto-measure Interval (s)", 0.1, 0.016, 2};
+  Parameter automeasureInterval{"Interval (s)", 0.1, 0.016, 2};
 
   gam::Biquad<> filter[2];
   gam::Biquad<> antiAlias[2];
-  ParameterBool filterOn{"Filter", "", 0};
+  ParameterBool filterOn{"Filter", "", 1};
 
   // custom wrapper for double precision imgui sliders
   bool SliderDouble(const char* label, double* v, double v_min, double v_max,
@@ -147,12 +162,17 @@ class QHOSYN : public App, public MIDIMessageHandler {
   }
 
   // wave function for generating coefficients
-  // std::function has some undesirable overhead, I'd rather use a function pointer or lambda, but
-  // if I ever want to capture some member variable to factor into the function, (for example to
-  // do something like "x = 1 for highest eigenstate only" I need std::function.
+  // std::function has some undesirable overhead, I'd rather use a function pointer or
+  // lambda, but if I ever want to capture some member variable to factor into the
+  // function, (for example to do something like "x = 1 for highest eigenstate only" I
+  // need std::function.
   std::function<double(double x)> initWaveFunction = [&](double x) { return sin(x); };
+
+  // Create Hilbert basis with 15 dimensions
+  HilbertSpace basis{15};
+
   // initialize the wave function
-  WaveFunction psi{new HilbertSpace(dims), initWaveFunction};
+  WaveFunction psi{&basis, 2, initWaveFunction};
 
   // copy the coefficients into our variable for manual coefficient control
   std::vector<double> manualCoefficients = psi.coefficients;
@@ -175,7 +195,7 @@ class QHOSYN : public App, public MIDIMessageHandler {
   // // ifft
   int sourceSelect[2] = {0, 0};
   static const int fftSize = resolution * 32;
-  float binSize = 44100 / fftSize;
+  float binSize = 48000 / fftSize;
 
   // // fftw inverse fft
   fftw_complex* c2rIn;
@@ -220,28 +240,50 @@ class QHOSYN : public App, public MIDIMessageHandler {
   std::uniform_real_distribution<> uniform{0, 1000};
 
   // OSC stuff
-  osc::Send* oscClient;                     // create an osc client (broadcaster)
-  int oscClientPort = 16447;                // osc port
-  std::string oscClientAddr = "127.0.0.1";  // ip address
+  std::unique_ptr<osc::Send> oscSender;     // create an osc Sender
+  int oscSenderPort = 16447;                // osc port
+  std::string oscSenderAddr = "127.0.0.1";  // ip address
 
-  osc::Recv* oscServer;                     // create an osc Server (listener)
-  int oscServerPort = 16448;                // osc port
-  std::string oscServerAddr = "127.0.0.1";  // ip address
-  float oscServerTimeout = 0.02;
+  std::unique_ptr<al::osc::Recv> oscReceiver;             // create an osc Receiver
+  int oscReceiverPort = 16448;                            // osc port
+  std::string oscReceiverAddr = "127.0.0.1";              // ip address
+  int previousoscReceiverPort = oscReceiverPort;          // osc port
+  std::string previousoscReceiverAddr = oscReceiverAddr;  // ip address
+  float oscReceiverTimeout = 0.02;
+
+  std::string measurementArg = "/measurement";
+  ImGuiInputTextCallback inputTextCallback;
+  void* CallbackUserData;
+
+  bool isOscWarningWindow = false;
 
   void resetOSC() {
-    oscServer->stop();
-    oscServer->open(oscServerPort, oscServerAddr.c_str(), oscServerTimeout);
-    oscServer->handler(oscDomain()->handler());
-    oscServer->start();
-    std::cout << "OSC Server (Listener) Settings:" << std::endl;
-    std::cout << "IP Address: " << oscServerAddr << std::endl;
-    std::cout << "Port: " << oscServerPort << std::endl;
-    std::cout << "Timeout: " << oscServerTimeout << std::endl;
-    oscClient->open(oscClientPort, oscClientAddr.c_str());
-    std::cout << "OSC Client (Broadcaster) Settings:" << std::endl;
-    std::cout << "IP Address: " << oscClientAddr << std::endl;
-    std::cout << "Port: " << oscClientPort << std::endl;
+    if (oscReceiver != nullptr) oscReceiver->stop();
+    oscReceiver.reset();
+    oscReceiver =
+      std::make_unique<al::osc::Recv>(oscReceiverPort, oscReceiverAddr.c_str(), oscReceiverTimeout);
+    if (oscReceiver->isOpen()) {
+      oscReceiver->handler(oscDomain()->handler());
+      oscReceiver->start();
+      std::cout << "OSC Receiver Settings:" << std::endl;
+      std::cout << "IP Address: " << oscReceiverAddr << std::endl;
+      std::cout << "Port: " << oscReceiverPort << std::endl;
+      std::cout << "Timeout: " << oscReceiverTimeout << std::endl;
+      previousoscReceiverAddr = oscReceiverAddr;
+      previousoscReceiverPort = oscReceiverPort;
+    } else {
+      std::cerr << "Could not bind to UDP socket. Is there a server already bound to that port?"
+                << std::endl;
+      oscReceiverAddr = previousoscReceiverAddr;
+      oscReceiverPort = previousoscReceiverPort;
+      oscReceiver.reset();
+      oscReceiver = std::make_unique<al::osc::Recv>(oscReceiverPort, oscReceiverAddr.c_str(), 0.02);
+      isOscWarningWindow = true;
+    }
+    oscSender->open(oscSenderPort, oscSenderAddr.c_str());
+    std::cout << "OSC Sender Settings:" << std::endl;
+    std::cout << "IP Address: " << oscSenderAddr << std::endl;
+    std::cout << "Port: " << oscSenderPort << std::endl;
   }
   // MIDI stuff
 
@@ -293,6 +335,266 @@ class QHOSYN : public App, public MIDIMessageHandler {
       printf("%3u ", (int)m.bytes[i]);
     }
     printf(", time = %g\n", m.timeStamp());
+  }
+
+  // for ImGUI variable length string input fields
+  struct InputTextCallback_UserData {
+    std::string* Str;
+    ImGuiInputTextCallback ChainCallback;
+    void* ChainCallbackUserData;
+  };
+
+  static int InputTextCallback(ImGuiInputTextCallbackData* data) {
+    InputTextCallback_UserData* user_data = (InputTextCallback_UserData*)data->UserData;
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+      // Resize string callback
+      // If for some reason we refuse the new length (BufTextLen) and/or capacity
+      // (BufSize) we need to set them back to what we want.
+      std::string* str = user_data->Str;
+      IM_ASSERT(data->Buf == str->c_str());
+      str->resize(data->BufTextLen);
+      data->Buf = (char*)str->c_str();
+    } else if (user_data->ChainCallback) {
+      // Forward to user callback, if any
+      data->UserData = user_data->ChainCallbackUserData;
+      return user_data->ChainCallback(data);
+    }
+    return 0;
+  };
+  bool InputText(const char* label, std::string* str, ImGuiInputTextFlags flags,
+                 ImGuiInputTextCallback callback, void* user_data) {
+    IM_ASSERT((flags & ImGuiInputTextFlags_CallbackResize) == 0);
+    flags |= ImGuiInputTextFlags_CallbackResize;
+
+    InputTextCallback_UserData cb_user_data;
+    cb_user_data.Str = str;
+    cb_user_data.ChainCallback = callback;
+    cb_user_data.ChainCallbackUserData = user_data;
+    return ImGui::InputText(label, (char*)str->c_str(), str->capacity() + 1, flags,
+                            InputTextCallback, &cb_user_data);
+  }
+
+  std::string currentAudioDeviceOut;
+  std::array<unsigned int, MAX_AUDIO_OUTS> AudioChanIndexOut;
+  int getLeadChannelOut() const { return AudioChanIndexOut[0]; }
+  bool isPaused = false;
+  double globalSamplingRate = 48000;
+  const int BLOCK_SIZE = 1024;
+  std::string soundOutput;
+  al::OutputRecorder mRecorder;
+  nfdresult_t result;
+  nfdchar_t* outPath = NULL;
+
+  int getSampleRateIndex() {
+    unsigned s_r = (unsigned)globalSamplingRate;
+    switch (s_r) {
+      case 44100:
+        return 0;
+      case 48000:
+        return 1;
+      case 88200:
+        return 2;
+      case 96000:
+        return 3;
+      default:
+        return 0;
+    }
+  }
+  void setSoundOutputPath(std::string sound_output_path) {
+    soundOutput = al::File::conformPathToOS(sound_output_path);
+  }
+  void setAudioSettings(float sample_rate) {
+    globalSamplingRate = sample_rate;
+    configureAudio(sample_rate, BLOCK_SIZE, MAX_AUDIO_OUTS, 0);
+  }
+  void setOutChannels(int lead_channel, int max_possible_channels) {
+    AudioChanIndexOut[0] = lead_channel;
+    if (max_possible_channels == 1) {
+      for (int i = 1; i < MAX_AUDIO_OUTS; i++) {
+        AudioChanIndexOut[i] = lead_channel;
+      }
+    } else {
+      // assert(lead_channel + (consts::MAX_AUDIO_OUTS) < max_possible_channels);
+      for (int i = 1; i < MAX_AUDIO_OUTS; i++) {
+        AudioChanIndexOut[i] = lead_channel + i;
+      }
+    }
+  }
+
+  void drawAudioIO(AudioIO* io) {
+    struct AudioIOState {
+      int currentSr = 1;
+      int currentBufSize = 3;
+      int currentDeviceOut = 0;
+      int currentDeviceIn = 0;
+      int currentOut = 1;
+      int currentIn = 1;
+      int currentMaxOut;
+      int currentMaxIn;
+      std::vector<std::string> devices;
+    };
+
+    auto updateOutDevices = [&](AudioIOState& state) {
+      state.devices.clear();
+      int numDevices = AudioDevice::numDevices();
+      int dev_out_index = 0;
+      for (int i = 0; i < numDevices; i++) {
+        if (!AudioDevice(i).hasOutput()) continue;
+
+        state.devices.push_back(AudioDevice(i).name());
+        if (currentAudioDeviceOut == AudioDevice(i).name()) {
+          state.currentDeviceOut = dev_out_index;
+          state.currentOut = getLeadChannelOut() + 1;
+          state.currentMaxOut = AudioDevice(i).channelsOutMax();
+        }
+        dev_out_index++;
+      }
+    };
+
+    static std::map<AudioIO*, AudioIOState> stateMap;
+    if (stateMap.find(io) == stateMap.end()) {
+      stateMap[io] = AudioIOState();
+      updateOutDevices(stateMap[io]);
+    }
+    AudioIOState& state = stateMap[io];
+    ImGui::PushID(std::to_string((unsigned long)io).c_str());
+
+    if (io->isOpen()) {
+      std::string text;
+      text += "Output Device: " + state.devices.at(state.currentDeviceOut);
+      text += "\nInput Device: " + state.devices.at(state.currentDeviceIn);
+      text += "\nSampling Rate: " + std::to_string(int(io->fps()));
+      text += "\nBuffer Size: " + std::to_string(io->framesPerBuffer());
+      text += "\nOutput Channels: " + std::to_string(state.currentOut) + ", " +
+              std::to_string(state.currentOut + 1);
+      text += "\nInput Channels: " + std::to_string(state.currentIn) + ", " +
+              std::to_string(state.currentIn + 1);
+      ImGui::Text("%s", text.c_str());
+      if (ImGui::Button("Stop")) {
+        isPaused = true;
+        io->stop();
+        io->close();
+        state.currentSr = getSampleRateIndex();
+      }
+    } else {
+      if (ImGui::Button("Update Devices")) {
+        updateOutDevices(state);
+      }
+
+      ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+      if (ImGui::Combo("Output Device", &state.currentDeviceOut, ParameterGUI::vector_getter,
+                       static_cast<void*>(&state.devices), state.devices.size())) {
+        state.currentMaxOut =
+          AudioDevice(state.devices.at(state.currentDeviceOut), AudioDevice::OUTPUT)
+            .channelsOutMax();
+      }
+      std::string chan_label_out =
+        "Select Outs: (Up to " + std::to_string(state.currentMaxOut) + " )";
+      ImGui::Text(chan_label_out.c_str(), "%s");
+      // ImGui::SameLine();
+      // ImGui::Checkbox("Mono/Stereo", &isStereo);
+      // ImGui::Indent(25 * fontScale);
+      // ImGui::PushItemWidth(50 * fontScale);
+      ImGui::DragInt("Chan 1 out", &state.currentOut, 1.0f, 0, state.currentMaxOut - 1, "%d",
+                     1 << 4);
+
+      if (state.currentOut > state.currentMaxOut - 1) state.currentOut = state.currentMaxOut - 1;
+      if (state.currentOut < 1) state.currentOut = 1;
+
+      ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+      for (int i = 1; i < MAX_AUDIO_OUTS; i++) {
+        ImGui::SameLine();
+        int temp = state.currentOut + i;
+        std::string channel = "Chan " + std::to_string(i + 1);
+        ImGui::DragInt(channel.c_str(), &temp, 1.0f, 0, state.currentMaxOut, "%d", 1 << 4);
+      }
+      ImGui::PopStyleVar();
+
+      // ImGui::Unindent(25 * fontScale);
+      ImGui::PopItemWidth();
+
+      std::vector<std::string> samplingRates{"44100", "48000", "88200", "96000"};
+      ImGui::Combo("Sampling Rate", &state.currentSr, ParameterGUI::vector_getter,
+                   static_cast<void*>(&samplingRates), samplingRates.size());
+      if (ImGui::Button("Start")) {
+        globalSamplingRate = std::stof(samplingRates[state.currentSr]);
+        io->framesPerSecond(globalSamplingRate);
+        io->framesPerBuffer(BLOCK_SIZE);
+        io->deviceOut(AudioDevice(state.devices.at(state.currentDeviceOut), AudioDevice::OUTPUT));
+        currentAudioDeviceOut = state.devices.at(state.currentDeviceOut);
+        setOutChannels(state.currentOut - 1, state.currentMaxOut);
+        io->open();
+        io->start();
+        isPaused = false;
+      }
+      ImGui::SameLine();
+    }
+    ImGui::PopID();
+  }
+
+  void drawRecorderWidget(al::OutputRecorder* recorder, double frameRate, uint32_t numChannels,
+                          std::string directory, uint32_t bufferSize) {
+    struct SoundfileRecorderState {
+      bool recordButton;
+      bool overwriteButton;
+    };
+    static std::map<SoundFileBufferedRecord*, SoundfileRecorderState> stateMap;
+    if (stateMap.find(recorder) == stateMap.end()) {
+      stateMap[recorder] = SoundfileRecorderState{0, false};
+    }
+    SoundfileRecorderState& state = stateMap[recorder];
+    ImGui::PushID(std::to_string((unsigned long)recorder).c_str());
+    ImGui::Text("Output File Name:");
+    static char buf1[64] = "test.wav";
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - 10.0f);
+    ImGui::InputText("##Record Name", buf1, 63);
+    ImGui::PopItemWidth();
+
+    if (state.recordButton) {
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.9, 0.3, 0.3, 1.0));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8, 0.5, 0.5, 1.0));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0, 1.0, 1.0, 1.0));
+    }
+    std::string buttonText = state.recordButton ? "Stop" : "Record";
+    bool recordButtonClicked = ImGui::Button(buttonText.c_str());
+    if (state.recordButton) {
+      ImGui::PopStyleColor();
+      ImGui::PopStyleColor();
+      ImGui::PopStyleColor();
+    }
+    if (recordButtonClicked) {
+      state.recordButton = !state.recordButton;
+      if (state.recordButton) {
+        uint32_t ringBufferSize;
+        if (bufferSize == 0) {
+          ringBufferSize = 8192;
+        } else {
+          ringBufferSize = bufferSize * numChannels * 4;
+        }
+        std::string filename = buf1;
+        if (!state.overwriteButton) {
+          int counter = 1;
+          while (File::exists(directory + filename) && counter < 9999) {
+            filename = buf1;
+            int lastDot = filename.find_last_of(".");
+            filename = filename.substr(0, lastDot) + "_" + std::to_string(counter++) +
+                       filename.substr(lastDot);
+          }
+        }
+        if (!recorder->start(directory + filename, frameRate, numChannels, ringBufferSize,
+                             gam::SoundFile::WAV, gam::SoundFile::FLOAT)) {
+          std::cerr << "Error opening file for record" << std::endl;
+        }
+      } else {
+        recorder->close();
+      }
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Overwrite", &state.overwriteButton);
+    ImGui::Text("Writing to:");
+    ImGui::TextWrapped("%s", directory.c_str());
+
+    ImGui::PopID();
   }
 
   virtual void onExit() {

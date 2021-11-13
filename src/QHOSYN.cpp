@@ -1,12 +1,9 @@
 
 /*
-Quantum Harmonic Oscillator Sonifier
-By Rodney DuPlessis
-To do:
-- make new wavefunction generation asynchronous so it doesn't freeze things up
-- find more interesting-sounding situations
-
+Quantum Harmonic Oscillator Synthesizer (QHOSYN)
+By Rodney DuPlessis (2021)
 */
+
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
 #include "QHOSYN.hpp"
@@ -14,17 +11,24 @@ To do:
 void QHOSYN::onInit() {
   title("QHOSYN");
   audioIO().setStreamName("QHOSYN");
+
+  audioIO().deviceOut(AudioDevice::defaultOutput());
+  setAudioSettings(1);
+
+  // audioIO().append(mRecorder);
   srand(std::time(0));
   emptyTable.fill(0);
 
   imguiInit();
+  ImGui::GetIO().IniFilename = NULL;
 
+  // Set up parameters
   dims.registerChangeCallback([&](int x) {
     manualCoefficients.resize(x);
     if (coeffList)
-      psi.newHilbertSpace(new HilbertSpace(x), NULL, manualCoefficients);
+      psi.newHilbertSpace(&basis, x, NULL, manualCoefficients);
     else {
-      psi.newHilbertSpace(new HilbertSpace(x), initWaveFunction, {}, project);
+      psi.newHilbertSpace(&basis, x, initWaveFunction, {}, project);
     }
     manualCoefficients = psi.coefficients;
 
@@ -36,11 +40,11 @@ void QHOSYN::onInit() {
 
   coeffList.registerChangeCallback([&](bool x) {
     if (x) {
-      psi.newHilbertSpace(new HilbertSpace(dims), NULL, manualCoefficients);
+      psi.newHilbertSpace(&basis, dims, NULL, manualCoefficients);
     } else {
       bool project = 1;
       if (presetFuncs.get() == 1) project = 0;
-      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, project);
+      psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, project);
     }
     for (int i = 0; i < manualCoefficients.size(); i++) {
       std::string coeffName = "C_n " + std::to_string(i);
@@ -76,18 +80,18 @@ void QHOSYN::onInit() {
       default:
         break;
     }
-    psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, project);
+    psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, project);
   });
 
   project.registerChangeCallback([&](bool on) {
     if (on)
-      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, 1);
+      psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, 1);
     else
-      psi.newHilbertSpace(new HilbertSpace(dims), initWaveFunction, {}, 0);
+      psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, 0);
   });
 
   sourceOneMenu.setElements({"none", "Real Wavetable", "Imaginary Wavetable",
-                             "Probability Wavetable", "Probability Shaped Noise",
+                             "Probability Wavetable", "Probability Noise Band",
                              "Inverse Fourier Transform"});
   sourceOneMenu.registerChangeCallback([&](int x) {
     sourceSelect[0] = 0;
@@ -117,7 +121,7 @@ void QHOSYN::onInit() {
   sourceOneMenu.set(1);
 
   sourceTwoMenu.setElements({"none", "Real Wavetable", "Imaginary Wavetable",
-                             "Probability Wavetable", "Probability Shaped Noise",
+                             "Probability Wavetable", "Probability Noise Band",
                              "Inverse Fourier Transform"});
   sourceTwoMenu.registerChangeCallback([&](int x) {
     sourceSelect[1] = 0;
@@ -164,15 +168,17 @@ void QHOSYN::onInit() {
 }
 
 void QHOSYN::onCreate() {
+  // Camera setup
   navControl().useMouse(false);
   nav().pos(Vec3f(1, 1, 12));
   nav().faceToward(Vec3f(0.0, 0.0, 0.0));
   nav().setHome();
 
-  oscClient = new osc::Send;
-  oscServer = new osc::Recv(oscServerPort, oscServerAddr.c_str(), oscServerTimeout);
+  // OSC setup
+  oscSender = std::make_unique<osc::Send>();
   resetOSC();
 
+  // set up drawing meshes
   waveFunctionPlot.primitive(Mesh::LINE_STRIP);
   probabilityPlot.primitive(Mesh::LINE_STRIP);
   noisePlot.primitive(Mesh::LINE_STRIP);
@@ -203,21 +209,39 @@ void QHOSYN::onCreate() {
     grid.vertex(5, -5, i);
     grid.vertex(i, -5, -5);
     grid.vertex(i, -5, 5);
-
     for (int i = 0; i < 12; i++) {
       grid.texCoord(0.8, 0.0);
-      grid.color(1.0, 1.0, 1.0, 0.2);  // add color for each vertex
+      grid.color(1.0, 1.0, 1.0, 0.2);
     }
+  }
+  for (int i = 0; i < 6; i++) {
+    axes.texCoord(0.8, 0.0);
+    axes.color(1.0, 1.0, 1.0, 1.0);  // add color for each vertex
+  }
+  for (int i = 0; i < resolution; i++) {
+    waveFunctionPlot.texCoord(1.0, 0.0);
+    probabilityPlot.texCoord(1.0, 0.0);
+    waveFunctionPlot.color(1.0, 0.0, 0.0, 0.9);  // add color for each vertex
+    probabilityPlot.color(0.0, 0.0, 1.0, 0.9);   // add color for each vertex
+  }
+  for (int i = 0; i < bufferLen; i++) {
+    ifftPlot.texCoord(1.0, 0.0);
+    noisePlot.texCoord(1.0, 0.0);
+    ifftPlot.color(0.0, 1.0, 1.0, 0.9);
+    noisePlot.color(1.0, 1.0, 0.0, 0.9);
+  }
+  for (int i = 0; i < 20; i++) {
+    samples.texCoord(1.0, 0.0);
+    samples.color(1.0, 1.0, 1.0, 1.0);
   }
 
   samples.primitive(Mesh::POINTS);
 
-  // compile and link the shaders
-  //
+  // compile and link shaders
   pointShader.compile(shader::pointVertex, shader::pointFragment, shader::pointGeometry);
   lineShader.compile(shader::lineVertex, shader::lineFragment, shader::lineGeometry);
 
-  // use a texture to control the alpha channel of each particle
+  // Textures for fuzzy lines and points (thanks Karl Yerkes)
   pointTexture.create2D(512, 512, Texture::R8, Texture::RED, Texture::SHORT);
   int Nx = pointTexture.width();
   int Ny = pointTexture.height();
@@ -242,46 +266,16 @@ void QHOSYN::onCreate() {
   }
   lineTexture.submit(&beta[0]);
 
-  for (int i = 0; i < 6; i++) {
-    axes.texCoord(0.8, 0.0);
-    axes.color(1.0, 1.0, 1.0, 1.0);  // add color for each vertex
-  }
-
-  for (int i = 0; i < resolution; i++) {
-    waveFunctionPlot.texCoord(1.0, 0.0);
-    probabilityPlot.texCoord(1.0, 0.0);
-    waveFunctionPlot.color(1.0, 0.0, 0.0, 0.9);  // add color for each vertex
-    probabilityPlot.color(0.0, 0.0, 1.0, 0.9);   // add color for each vertex
-  }
-
-  for (int i = 0; i < bufferLen; i++) {
-    ifftPlot.texCoord(1.0, 0.0);
-    noisePlot.texCoord(1.0, 0.0);
-    ifftPlot.color(0.0, 1.0, 1.0, 0.9);
-    noisePlot.color(1.0, 1.0, 0.0, 0.9);
-  }
-
-  for (int i = 0; i < 20; i++) {
-    samples.texCoord(1.0, 0.0);
-    samples.color(1.0, 1.0, 1.0, 1.0);
-  }
-
   // fill windowing arrays
   gam::tbl::hann(&overlapAddWindow[0], overlapAddWindow.size());
   gam::tbl::hamming(&filterKernelWindow[0], filterKernelWindow.size());
 
-  // forward (complex to complex) fftw things
-  // c2cForwardIn = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-  // c2cForwardOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-  // c2cForward = fftw_plan_dft_1d(fftSize, c2cForwardIn, c2cForwardOut, FFTW_FORWARD,
-  // FFTW_ESTIMATE);
-
-  // inverse fftw things
+  // inverse fftw
   c2rIn = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * ((fftSize / 2) + 1));
   c2rOut = (double*)fftw_malloc(sizeof(double) * fftSize);
   c2r = fftw_plan_dft_c2r_1d(fftSize, c2rIn, c2rOut, FFTW_ESTIMATE);
 
-  // forward fftw things
+  // forward fftw
   r2cIn = (double*)fftw_malloc(sizeof(double) * fftSize);
   r2cOut = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * ((fftSize / 2) + 1));
   r2c = fftw_plan_dft_r2c_1d(fftSize, r2cIn, r2cOut, FFTW_ESTIMATE);
@@ -291,8 +285,10 @@ void QHOSYN::onCreate() {
     for (int j = 0; j < ifftBuffers[i].size(); j++)
       for (int k = 0; k < ifftBuffers[i][j].size(); k++) ifftBuffers[i][j][k] = 0;
 
+  // FFT bin size
   binSize = audioIO().framesPerSecond() / fftSize;
 
+  // Set filters and smoothvalues
   for (int chan = 0; chan < 2; chan++) {
     pan[chan].changeType("lin");
     pan[chan].setTime(16.0f);
@@ -316,7 +312,7 @@ void QHOSYN::onAnimate(double dt) {
   ifftPlot.vertices().clear();
   noisePlot.vertices().clear();
 
-  // wavetableLock.lock();
+  // Update wavefunction
   for (int i = 0; i < resolution; i++) {
     psiValues[i] = psi.evaluate(posValues[i], simTime);
     reValues[i] = psiValues[i].real();
@@ -326,17 +322,14 @@ void QHOSYN::onAnimate(double dt) {
     probabilityPlot.vertex(posValues[i], probValues[i], 0);
   }
 
-  // fftw_execute(c2cForward);
-  // for (int i = 0; i < dim; i++) {
-  //   momentumPlot.vertex(posValues[i], c2cForwardOut[i][0] / resolution,
-  //                       c2cForwardOut[i][1] / resolution);
-  // }
+  // Fourier methods, skipped if not active for efficiency
   for (int chan = 0; chan < 2; chan++)
     if (sourceSelect[chan] >= 4) {
       for (int i = 0; i < fftSize / 2 + 1; i++) {
         c2rIn[i][0] = 0;
         c2rIn[i][1] = 0;
       }
+      // Noise band synthesis
       if (sourceSelect[chan] == 4) {
         for (int i = ifftBin; i < ifftBin + (resolution * ifftBandwidth); i++) {
           if (i < fftSize / 2) {
@@ -361,6 +354,7 @@ void QHOSYN::onAnimate(double dt) {
             noisePlot.vertex(((i / (float)bufferLen) * 10.0f) - 5.0f, c2rOut[i], 0);
           }
         }
+        // IFFT Synthesis
       } else if (sourceSelect[chan] == 5) {
         for (int i = ifftBin; i < ifftBin + (resolution * ifftBandwidth); i++) {
           if (i < fftSize / 2) {
@@ -377,7 +371,7 @@ void QHOSYN::onAnimate(double dt) {
           }
         }
         fftw_execute(c2r);
-        for (int i = 0; i < M; i++) {  // maybe resolution + 1
+        for (int i = 0; i < M; i++) {
           r2cIn[i] = c2rOut[((fftSize - (M / 2)) + i) % fftSize] * filterKernelWindow[i];
         }
         for (int i = M; i < fftSize; i++) {
@@ -390,11 +384,6 @@ void QHOSYN::onAnimate(double dt) {
         c2rIn[fftSize / 2][0] = 0;
         c2rIn[fftSize / 2][1] = 0;
         for (int i = 1; i < fftSize / 2; i++) {
-          // float phase = uniform(gen);
-          // float magnitude = sqrt(pow(r2cOut[i][0], 2) + pow(r2cOut[i][1], 2));
-          // momentumPlot.vertex(posValues[i], r2cOut[i][0], r2cOut[i][1]);
-          // c2rIn[i][0] = cos(phase) * magnitude / M;
-          // c2rIn[i][1] = sin(phase) * magnitude / M;
           c2rIn[i][0] = r2cOut[i][0] / M;
           c2rIn[i][1] = r2cOut[i][1] / M;
         }
@@ -411,6 +400,7 @@ void QHOSYN::onAnimate(double dt) {
       }
     }
 
+  // Measurements
   if (automeasureTimer > automeasureInterval) {
     measurementTrigger = 1;
     automeasureTimer -= automeasureInterval;
@@ -428,33 +418,35 @@ void QHOSYN::onAnimate(double dt) {
       sampleDisplayTimer[i] -= 1;
     }
   }
-  if (oscOn) {
+
+  // OSC sending
+  if (oscSenderOn) {
     if (oscWaveform) {
       osc::Packet p;
       p.beginMessage("/realValues/firstHalf");
       for (int i = 0; i < 128; i++) p << (float)reValues[i];
       p.endMessage();
-      oscClient->send(p);
+      oscSender->send(p);
       p.clear();
       p.beginMessage("/realValues/secondHalf");
       for (int i = 128; i < 256; i++) p << (float)reValues[i];
       p.endMessage();
-      oscClient->send(p);
+      oscSender->send(p);
 
       p.clear();
       p.beginMessage("/imaginaryValues/firstHalf");
       for (int i = 0; i < 128; i++) p << (float)imValues[i];
       p.endMessage();
-      oscClient->send(p);
+      oscSender->send(p);
       p.clear();
       p.beginMessage("/imaginaryValues/secondHalf");
       for (int i = 128; i < 256; i++) p << (float)imValues[i];
       p.endMessage();
-      oscClient->send(p);
+      oscSender->send(p);
     }
     if (oscMeasurement) {
       if (measurementTrigger) {
-        oscClient->send("/measurement", (float)measurementPoints[measurementPointsCounter][0]);
+        oscSender->send(measurementArg, (float)measurementPoints[measurementPointsCounter][0]);
       }
     }
   }
@@ -464,23 +456,24 @@ void QHOSYN::onAnimate(double dt) {
 
 void QHOSYN::onDraw(Graphics& g) {
   g.clear();
-  // gl::depthTesting(true);
-  gl::blending(true);                                      // needed for transparency
-  gl::blendMode(GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD);  // needed for transparency
+  // needed for transparency
+  gl::blending(true);
+  gl::blendMode(GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD);
   g.lighting(true);
 
-  lineTexture.bind();  // texture binding
+  // Draw lines
+  lineTexture.bind();
   g.meshColor();
-  g.shader(lineShader);  // run shader
+  g.shader(lineShader);
   if (drawAxes) g.draw(axes);
   if (drawGrid) g.draw(grid);
   if (drawWavefunction) g.draw(waveFunctionPlot);
   if (drawProbability) g.draw(probabilityPlot);
   if (drawIfft) g.draw(ifftPlot);
   if (drawNoise) g.draw(noisePlot);
-
   lineTexture.unbind();
 
+  // Draw measurement points
   pointTexture.bind();
   g.shader(pointShader);
   if (drawMeasurements) g.draw(samples);
@@ -490,8 +483,10 @@ void QHOSYN::onDraw(Graphics& g) {
     imguiBeginFrame();
     int yposition = 0;
 
+    // Simulation Control Panel
     ParameterGUI::beginPanel("Simulation", 0, yposition, flags);
-    ImGui::Text("Simulation Time: %.2f", simTime);
+    ImGui::Text("Simulation Time: %.2fs", simTime);
+    ImGui::PushItemWidth(-120);
     ParameterGUI::drawParameter(&simSpeed);
     ParameterGUI::drawParameterInt(&dims, "");
     ParameterGUI::drawParameterBool(&coeffList, "");
@@ -500,7 +495,7 @@ void QHOSYN::onDraw(Graphics& g) {
       for (int i = 0; i < manualCoefficients.size(); i++) {
         std::string coeffName = "C_n " + std::to_string(i);
         if (SliderDouble((coeffName).c_str(), &manualCoefficients[i], -10, 10)) {
-          psi.newHilbertSpace(new HilbertSpace(dims), NULL, manualCoefficients);
+          psi.newHilbertSpace(&basis, dims, NULL, manualCoefficients);
         }
       }
     } else {
@@ -510,17 +505,18 @@ void QHOSYN::onDraw(Graphics& g) {
         for (int i = 0; i < psi.coefficients.size(); i++) {
           ImGui::Text("coefficient %i: %.10f ", i, psi.coefficients[i]);
         }
+      ImGui::PopItemWidth();
     }
-
     yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
+    // Audio Control Panel
     ParameterGUI::beginPanel("Audio", 0, yposition, flags);
+    ImGui::PushItemWidth(-120);
     ParameterGUI::drawParameterBool(&audioOn);
     ImGui::SameLine();
     ParameterGUI::drawParameterBool(&panner);
     ParameterGUI::drawParameter(&volume);
-    ParameterGUI::drawParameterBool(&filterOn);
     ParameterGUI::drawMenu(&sourceOneMenu);
     ParameterGUI::drawMenu(&sourceTwoMenu);
     if (!sourceSelect[0] || !sourceSelect[1]) {
@@ -532,10 +528,26 @@ void QHOSYN::onDraw(Graphics& g) {
       ParameterGUI::drawParameterInt(&ifftBin, "");
       ParameterGUI::drawParameterInt(&ifftBandwidth, "");
     }
+    if (ImGui::CollapsingHeader("Recorder")) {
+      drawRecorderWidget(&mRecorder, audioIO().framesPerSecond(),
+                         audioIO().channelsOut() <= 1 ? 1 : 2, soundOutput, BLOCK_SIZE);
+      if (ImGui::Button("Change Output Path")) {
+        result = NFD_PickFolder(NULL, &outPath);
 
+        if (result == NFD_OKAY) {
+          std::string temp = outPath;
+          setSoundOutputPath(outPath);
+        }
+      }
+    }
+    if (ImGui::CollapsingHeader("Audio IO Settings")) {
+      drawAudioIO(&audioIO());
+    }
+    ImGui::PopItemWidth();
     yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
+    // Draw Control Panel
     ParameterGUI::beginPanel("Draw", 0, yposition, flags);
     ParameterGUI::drawParameterBool(&drawGrid);
     ParameterGUI::drawParameterBool(&drawAxes);
@@ -544,25 +556,63 @@ void QHOSYN::onDraw(Graphics& g) {
     ParameterGUI::drawParameterBool(&drawIfft);
     ParameterGUI::drawParameterBool(&drawNoise);
     ParameterGUI::drawParameterBool(&drawMeasurements);
-
     yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
+    // OSC Control Panel
     ParameterGUI::beginPanel("OSC", 0, yposition, flags);
-    ParameterGUI::drawParameterBool(&oscOn);
-    ParameterGUI::drawParameterBool(&oscWaveform);
-    ParameterGUI::drawParameterBool(&oscMeasurement);
-
+    ParameterGUI::drawParameterBool(&oscSenderOn);
+    if (oscSenderOn) {
+      ImGui::PushItemWidth(200);
+      if (InputText("Client IP", &oscSenderAddr, ImGuiInputTextFlags_EnterReturnsTrue,
+                    inputTextCallback, CallbackUserData))
+        resetOSC();
+      if (ImGui::InputInt("Client Port", &oscSenderPort, 1, 1,
+                          ImGuiInputTextFlags_EnterReturnsTrue))
+        resetOSC();
+      ParameterGUI::drawParameterBool(&oscWaveform);
+      ParameterGUI::drawParameterBool(&oscMeasurement);
+      InputText("Measure Argument", &measurementArg, ImGuiInputTextFlags_EnterReturnsTrue,
+                inputTextCallback, CallbackUserData);
+      ImGui::PopItemWidth();
+    }
+    ParameterGUI::drawParameterBool(&oscReceiverOn);
+    if (oscReceiverOn) {
+      ImGui::PushItemWidth(200);
+      if (InputText("Server IP", &oscReceiverAddr, ImGuiInputTextFlags_EnterReturnsTrue,
+                    inputTextCallback, CallbackUserData))
+        resetOSC();
+      if (ImGui::InputInt("Server Port", &oscReceiverPort, 1, 1,
+                          ImGuiInputTextFlags_EnterReturnsTrue))
+        resetOSC();
+      ImGui::PopItemWidth();
+    }
     yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
 
+    // Measurement Control Panel
     ParameterGUI::beginPanel("Measurement", 0, yposition, flags);
     measurementTrigger = ImGui::Button("Measure", ImVec2(100, 20));
     ParameterGUI::drawParameterBool(&automeasure);
+    ImGui::PushItemWidth(-120);
     ParameterGUI::drawParameter(&automeasureInterval);
-
+    ImGui::PopItemWidth();
     yposition += ImGui::GetWindowHeight();
     ParameterGUI::endPanel();
+
+    // OSC warning window if OSC port fails to connect.
+    if (isOscWarningWindow) {
+      ImGui::OpenPopup("OSC Error");
+    }
+    bool isOSCWarningOpen = true;
+    if (ImGui::BeginPopupModal("OSC Error", &isOSCWarningOpen)) {
+      isOscWarningWindow = false;
+      ImGui::TextColored(ImVec4(0.9, 0.2, 0.2, 0.9), "Warning");
+      ImGui::Text(
+        "Could not bind to UDP socket. Is there a server already bound to that "
+        "port?");
+      ImGui::EndPopup();
+    }
 
     imguiEndFrame();
 
@@ -574,6 +624,7 @@ void QHOSYN::onSound(al::AudioIOData& io) {
   // This is the sample loop
   while (io()) {
     if (audioOn) {
+      // Wavetable Synthesis
       if (sourceSelect[0] <= 3 || sourceSelect[1] <= 3) {
         filter[0].freq(wavetableFreq * dims);
         filter[1].freq(wavetableFreq * dims);
@@ -608,16 +659,17 @@ void QHOSYN::onSound(al::AudioIOData& io) {
           float x0 = wavetable[chan][j];
           float x1 =
             wavetable[chan]
-                     [(j == (wavetable[chan].size() - 1)) ? 0 : j + 1];  // wrapping at end of table
+                     [(j == (wavetable[chan].size() - 1)) ? 0 : j + 1];  // wrap at end of table
           float t = tableReader - j;
           if (sourceSelect[chan] <= 3)
             if (filterOn)
               sample[chan] =
                 filter[chan]((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
             else
-              sample[chan] = ((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
+              sample[chan] = ((x1 * t) + (x0 * (1 - t))) / 2;
         }
       }
+      // Fourier Synthesis
       for (int chan = 0; chan < 2; chan++) {
         if (sourceSelect[chan] >= 4) {
           if (currentIfftSample[chan] >= bufferLen / 2) {
@@ -693,7 +745,6 @@ int main() {
   dev.print();
 
   QHOSYN app;
-  app.configureAudio(dev, dev.defaultSampleRate(), 1024, 2, 0);
   app.start();
   return 0;
 }

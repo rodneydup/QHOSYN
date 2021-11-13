@@ -1,6 +1,5 @@
-
-// the following is the shader code, which allows for the fuzzy look
-
+// This shader code allows for the fuzzy look
+// Thanks Karl Yerkes for the foundation to this.
 namespace shader {
 const char *lineVertex = R"(
 #version 400
@@ -53,9 +52,6 @@ void main() {
 
   const float r = 0.03;
 
-  // does vec3(0.0, 0.0, 1.0) point at the eye in the coordinate system?
-  // we hope that this billboards; it seems to, but really?
-  // XXX i think that this is broken; it's just not quite right
   vec4 d = vec4(normalize(cross(b.xyz - a.xyz, vec3(0.0, 0.0, 1.0))), 0.0) * r;
 
   gl_Position = m * (a + d * vertex[0].size);
@@ -151,14 +147,6 @@ fragment;
 void main() {
   mat4 m = al_ProjectionMatrix;   // rename to make lines shorter
   vec4 v = gl_in[0].gl_Position;  // al_ModelViewMatrix * gl_Position
-
-  // http://ogldev.atspace.co.uk/www/tutorial27/tutorial27.html
-  //
-  // in the tutorial at the link above, the billboarding computations
-  // are done in worldspace using the camera position, but in this
-  // example we apply the modelview matrix and do the billboarding
-  // computations with respect to the origin which should be the
-  // eye/camera position. are we wrong?
 
   float r = 0.15;
   r *= vertex[0].size;
