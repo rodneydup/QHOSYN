@@ -188,6 +188,10 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 target_link_libraries(${APP_NAME} PUBLIC ${LIB_NAME} ${LIBRARIES})
 
+set_target_properties(${LIB_NAME} PROPERTIES
+  CXX_STANDARD 14
+  CXX_STANDARD_REQUIRED ON
+)
 
 # binaries are put into the ./bin directory by default
 set_target_properties(${APP_NAME} PROPERTIES
