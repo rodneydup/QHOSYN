@@ -34,12 +34,11 @@ add_library(${LIB_NAME}
     ${srcs}
 )
 
-target_link_libraries(${LIB_NAME} PUBLIC 
-  al 
-)
+
 
 target_include_directories(${LIB_NAME} PRIVATE 
   ${CMAKE_SOURCE_DIR}/external
+  ${CMAKE_SOURCE_DIR}/src
 )
 
 set_target_properties(${LIB_NAME} PROPERTIES
@@ -156,24 +155,25 @@ find_library(NFD_LIBRARY nfd HINTS
 # link allolib to project
 get_target_property(AL_EXT_LIBRARIES al_ext AL_EXT_LIBRARIES)
 find_package(GSL REQUIRED)    # See below (2)
-target_link_libraries(${APP_NAME} PRIVATE al GSL::gsl GSL::gslcblas fftw3)
+target_link_libraries(${LIB_NAME} PRIVATE al GSL::gsl GSL::gslcblas fftw3)
 
-target_link_libraries(${APP_NAME} PUBLIC 
+target_link_libraries(${LIB_NAME} PUBLIC 
   al 
   "${AL_EXT_LIBRARIES}"
   ${NFD_LIBRARY}
 ) 
+
 if(APPLE)
-  target_link_libraries(${APP_NAME} PUBLIC ${Appkit})
+  target_link_libraries(${LIB_NAME} PUBLIC ${Appkit})
 endif()
 
 if(LINUX)
-  target_link_libraries(${APP_NAME} PUBLIC ${GTK3_LIBRARIES})
+  target_link_libraries(${LIB_NAME} PUBLIC ${GTK3_LIBRARIES})
 endif()
 
 # Link windows libraries.
 if(WIN32)
-  target_link_libraries(${APP_NAME} PUBLIC comctl32)
+  target_link_libraries(${LIB_NAME} PUBLIC comctl32)
 endif()
 
 
