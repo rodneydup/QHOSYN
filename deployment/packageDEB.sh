@@ -24,14 +24,17 @@ BUILDDIR="deployment/Linux/$RELEASENAME"
 mkdir -p "$BUILDDIR/DEBIAN"
 mkdir -p "$BUILDDIR/usr/bin"
 mkdir -p "$BUILDDIR/usr/share/applications/"
-mkdir -p "$BUILDDIR/usr/share/doc/QHOSYN/"
+mkdir -p "$BUILDDIR/usr/share/doc/qhosyn/"
 mkdir -p "$BUILDDIR/usr/share/pixmaps/"
+mkdir -p "$BUILDDIR/usr/share/qhosyn/"
 
 # copy necessary files over
 
 cd "$Dir"
 
-objcopy --strip-debug --strip-unneeded bin/QHOSYN "$BUILDDIR/usr/bin/QHOSYN"
+cp -r "deployment/externalResources/fonts/" "$BUILDDIR/usr/share/qhosyn/"
+
+objcopy --strip-debug --strip-unneeded bin/QHOSYN "$BUILDDIR/usr/bin/qhosyn"
 
 cp "deployment/icons/QHOSYN.png" "$BUILDDIR/usr/share/pixmaps/QHOSYN.png"
 

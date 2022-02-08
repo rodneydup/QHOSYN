@@ -2,7 +2,7 @@ Package: QHOSYN
 Architecture: amd64
 Section: sound
 Priority: optional
-Version:0.8-1
+Version:0.9-1
 Maintainer:Rodney DuPlessis <rodney@rodneyduplessis.com>
 Depends:libsndfile1, libc6
 Homepage: https://github.com/rodneydup/QHOSYN
