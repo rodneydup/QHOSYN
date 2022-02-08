@@ -5,8 +5,9 @@
 
 #include <vector>
 
-// helper functions
+#include "../external/fparser4.5.2/fparser.hh"
 
+// Calculate a factorial
 int factorial(int x) {
   int result = 1;
   for (int i = 1; i <= x; i++) result = result * i;
@@ -226,6 +227,7 @@ class RingBuffer {
   std::mutex mMutex;
 };
 
+// interpolate toward new values to smooth transitions
 template <class T>  // The class is templated to allow a variety of data types
 class SmoothValue {
  public:
@@ -293,4 +295,84 @@ class SmoothValue {
   int stepsTaken;     // variable to keep track of steps to avoid overshooting
   T z;                // storage for previous value
   std::string interpolation;
+};
+
+// Parse a string to a function
+double fRand(const double *range) {
+  return (double(rand()) / (RAND_MAX / (range[1] - range[0]))) + range[0];
+}
+class parseStringToMathFunction {
+ public:
+  parseStringToMathFunction(std::string defaultVariables = "x", std::string defaultFunction = "x") {
+    mVariables = defaultVariables;
+    mFunction = defaultFunction;
+    fp.AddFunction("rand", fRand, 2);
+  }
+  double Square(const double *p) { return p[0] * p[0]; }
+  void setFunction(std::string newFunction) { mFunction = newFunction; }
+
+  void setVariables(std::string newVariables) { mVariables = newVariables; }
+
+  void parse() {
+    int errorCode = fp.Parse(mFunction, mVariables);
+    if (errorCode == -1)
+      return;
+    else {
+      std::cout << "\033[1;31mFunction Parser Error \033[0m" << fp.ErrorMsg() << std::endl;
+    }
+  }
+
+  // three evaluate functions, supporting up to three variables
+  double evaluate(double input) {
+    double inputArray[1] = {input};
+    double val = fp.Eval(inputArray);
+    int errorCode = fp.EvalError();
+    switch (errorCode) {
+      case 0:
+        return val;
+        break;
+      case 1:
+        std::cout << "\033[1;31mFunction Evaluation Error: \033[0m"
+                  << "division by zero" << std::endl;
+        return 0;
+        break;
+      case 2:
+        std::cout << "\033[1;31mFunction Evaluation Error: \033[0m"
+                  << "sqrt error (sqrt of a negative value)" << std::endl;
+        return 0;
+        break;
+      case 3:
+        std::cout << "\033[1;31mFunction Evaluation Error: \033[0m"
+                  << "log error (logarithm of a negative value)" << std::endl;
+        return 0;
+        break;
+      case 4:
+        std::cout << "\033[1;31mFunction Evaluation Error: \033[0m"
+                  << "trigonometric error (asin or acos of illegal value)" << std::endl;
+        return 0;
+        break;
+      case 5:
+        std::cout << "\033[1;31mFunction Evaluation Error: \033[0m"
+                  << "maximum recursion level in eval() reached" << std::endl;
+        return 0;
+        break;
+      default:
+        break;
+    }
+  }
+
+  double evaluate(double inputOne, double inputTwo) {
+    double inputArray[2] = {inputOne, inputTwo};
+    fp.Eval(inputArray);
+  }
+
+  double evaluate(double inputOne, double inputTwo, double inputThree) {
+    double inputArray[3] = {inputOne, inputTwo, inputThree};
+    fp.Eval(inputArray);
+  }
+
+ private:
+  FunctionParser fp;
+  std::string mVariables;
+  std::string mFunction;
 };

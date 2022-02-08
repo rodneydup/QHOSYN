@@ -115,7 +115,8 @@ class QHOSYN : public App, public MIDIMessageHandler {
   // simulation parameters
   ParameterInt dims{"Eigenstates", "", 2, "", 1, 15};
   ParameterBool coeffList{"Manual Coefficient Entry", "", 0};
-  ParameterMenu presetFuncs{"Function Presets"};
+  ParameterMenu presetFunctions{"Function Presets"};
+  std::string customFunction = "";
   ParameterBool project{"Project in Orthogonal Basis", "", 1};
   Parameter simSpeed{"Simulation Speed", 1.0, -5.0, 5.0};
 
@@ -255,6 +256,12 @@ class QHOSYN : public App, public MIDIMessageHandler {
   ImGuiInputTextCallback inputTextCallback;
   void* CallbackUserData;
 
+  parseStringToMathFunction parser{"x", "x"};
+
+  std::string opener = "open ";
+  std::string functionParserURL =
+    "http://warp.povusers.org/FunctionParser/fparser.html#functionsyntax";
+
   bool isOscWarningWindow = false;
 
   void resetOSC() {
@@ -337,6 +344,9 @@ class QHOSYN : public App, public MIDIMessageHandler {
     printf(", time = %g\n", m.timeStamp());
   }
 
+  ImFont* bodyFont;
+  ImFont* titleFont;
+
   // for ImGUI variable length string input fields
   struct InputTextCallback_UserData {
     std::string* Str;
@@ -361,6 +371,7 @@ class QHOSYN : public App, public MIDIMessageHandler {
     }
     return 0;
   };
+
   bool InputText(const char* label, std::string* str, ImGuiInputTextFlags flags,
                  ImGuiInputTextCallback callback, void* user_data) {
     IM_ASSERT((flags & ImGuiInputTextFlags_CallbackResize) == 0);
@@ -462,13 +473,13 @@ class QHOSYN : public App, public MIDIMessageHandler {
     if (io->isOpen()) {
       std::string text;
       text += "Output Device: " + state.devices.at(state.currentDeviceOut);
-      text += "\nInput Device: " + state.devices.at(state.currentDeviceIn);
+      // text += "\nInput Device: " + state.devices.at(state.currentDeviceIn);
       text += "\nSampling Rate: " + std::to_string(int(io->fps()));
       text += "\nBuffer Size: " + std::to_string(io->framesPerBuffer());
       text += "\nOutput Channels: " + std::to_string(state.currentOut) + ", " +
               std::to_string(state.currentOut + 1);
-      text += "\nInput Channels: " + std::to_string(state.currentIn) + ", " +
-              std::to_string(state.currentIn + 1);
+      // text += "\nInput Channels: " + std::to_string(state.currentIn) + ", " +
+      //         std::to_string(state.currentIn + 1);
       ImGui::Text("%s", text.c_str());
       if (ImGui::Button("Stop")) {
         isPaused = true;

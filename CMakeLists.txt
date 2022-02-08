@@ -21,6 +21,8 @@ src/QHOSYN.hpp
 src/shadercode.hpp
 src/wavefunction.hpp
 src/utility.hpp
+external/fparser4.5.2/fparser.cc
+external/fparser4.5.2/fpoptimizer.cc
 )
 
 set(src

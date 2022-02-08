@@ -15,7 +15,20 @@ void QHOSYN::onInit() {
   audioIO().deviceOut(AudioDevice::defaultOutput());
   setAudioSettings(1);
 
-  // audioIO().append(mRecorder);
+  opener = "xdg-open ";
+#ifdef __APPLE__
+  opener = "open ";
+#endif
+
+#ifdef __linux__
+  opener = "xdg-open ";
+#endif
+
+#ifdef _WIN32
+  opener = "start ";
+#endif
+
+  audioIO().append(mRecorder);
   srand(std::time(0));
   emptyTable.fill(0);
 
@@ -43,7 +56,7 @@ void QHOSYN::onInit() {
       psi.newHilbertSpace(&basis, dims, NULL, manualCoefficients);
     } else {
       bool project = 1;
-      if (presetFuncs.get() == 1) project = 0;
+      if (presetFunctions.get() == 1) project = 0;
       psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, project);
     }
     for (int i = 0; i < manualCoefficients.size(); i++) {
@@ -52,9 +65,9 @@ void QHOSYN::onInit() {
     }
   });
 
-  presetFuncs.setElements({"psi = sin(x)", "psi = 1 if x=dimensions; 0 otherwise",
-                           "psi = random(0 to 1)", "psi = x - 2", " psi = 1/(x+1)"});
-  presetFuncs.registerChangeCallback([&](int choice) {
+  presetFunctions.setElements({"ϕ(x) = sin(x)", "ϕ(x) = if(x=MaxEigenstate, 1, 0)",
+                               "ϕ(x) = rand(0, 1)", "ϕ(x) = x - 2", "ϕ(x) = 1/(x+1)", "Custom"});
+  presetFunctions.registerChangeCallback([&](int choice) {
     switch (choice) {
       case 0:
         initWaveFunction = [](double x) { return sin(x); };
@@ -76,11 +89,13 @@ void QHOSYN::onInit() {
       case 4:
         initWaveFunction = [](double x) { return 1.0 / (x + 1); };
         break;
-
+      case 5:
+        break;
       default:
         break;
     }
-    psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, project);
+    if (presetFunctions.get() != 5)
+      psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, project);
   });
 
   project.registerChangeCallback([&](bool on) {
@@ -177,6 +192,43 @@ void QHOSYN::onCreate() {
   // OSC setup
   oscSender = std::make_unique<osc::Send>();
   resetOSC();
+
+  ImFontConfig fontConfig;
+  fontConfig.OversampleH = 4;
+  fontConfig.OversampleV = 4;
+
+  ImGuiIO& io = ImGui::GetIO();
+
+  // build a range to inlcude special characters in font
+  ImVector<ImWchar> ranges;
+  ImFontGlyphRangesBuilder builder;
+  builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+  static const ImWchar icons_ranges[] = {0x0370, 0x03FF, 0};  // add greek characters
+  builder.AddRanges(icons_ranges);
+  builder.BuildRanges(
+    &ranges);  // Build the final result (ordered ranges with all the unique characters submitted)
+
+#ifdef __APPLE__
+  bodyFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
+                                          16.0f, &fontConfig);
+  titleFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
+                                           20.0f, &fontConfig);
+#endif
+
+#ifdef __linux__
+  bodyFont = io.Fonts->AddFontFromFileTTF("/usr/share/qhosyn/fonts/Roboto-Regular.ttf", 16.0f,
+                                          &fontConfig, ranges.Data);
+  titleFont = io.Fonts->AddFontFromFileTTF("/usr/share/qhosyn/fonts/Roboto-Regular.ttf", 20.0f,
+                                           &fontConfig, ranges.Data);
+#endif
+
+#ifdef _WIN32
+  bodyFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
+                                          16.0f, &fontConfig);
+  titleFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
+                                           20.0f, &fontConfig);
+#endif
+  io.Fonts->Build();  // Build the atlas while 'ranges' is still in scope and not deleted.
 
   // set up drawing meshes
   waveFunctionPlot.primitive(Mesh::LINE_STRIP);
@@ -484,7 +536,10 @@ void QHOSYN::onDraw(Graphics& g) {
     int yposition = 0;
 
     // Simulation Control Panel
+    ImGui::PushFont(titleFont);
     ParameterGUI::beginPanel("Simulation", 0, yposition, flags);
+    ImGui::PopFont();
+    ImGui::PushFont(bodyFont);
     ImGui::Text("Simulation Time: %.2fs", simTime);
     ImGui::PushItemWidth(-120);
     ParameterGUI::drawParameter(&simSpeed);
@@ -499,7 +554,31 @@ void QHOSYN::onDraw(Graphics& g) {
         }
       }
     } else {
-      ParameterGUI::drawMenu(&presetFuncs);
+      ParameterGUI::drawMenu(&presetFunctions);
+      if (presetFunctions.get() == 5) {
+        ImGui::Text("ϕ(x) =");
+        ImGui::SameLine();
+        if (InputText("##customFunction", &customFunction, ImGuiInputTextFlags_EnterReturnsTrue,
+                      inputTextCallback, CallbackUserData)) {
+          parser.setFunction(customFunction);
+          parser.parse();
+          std::cout << "got here" << std::endl;
+          initWaveFunction = [this](double x) { return parser.evaluate(x); };
+          psi.newHilbertSpace(&basis, dims, initWaveFunction, {}, project);
+        }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip(
+            "Enter a custom wavefunction such as x+2\nSupports all standard arithmetic operators "
+            "such as multiply (*), divide (/), \nadd(+), subtract (-), modulo(%), and "
+            "exponentiation"
+            "(^).\nAlso supports rand(min,max) for uniform random number (float) generation, \n"
+            "trigonometric functions such as sin(x), and many others.\nClick the Help button "
+            "below for more options.");
+        if (ImGui::Button("Help")) {
+          system((opener + functionParserURL).c_str());
+        }
+      }
+
       ParameterGUI::drawParameterBool(&project);
       if (ImGui::CollapsingHeader("Coefficient Values"))
         for (int i = 0; i < psi.coefficients.size(); i++) {
@@ -511,7 +590,11 @@ void QHOSYN::onDraw(Graphics& g) {
     ParameterGUI::endPanel();
 
     // Audio Control Panel
+    ImGui::PopFont();
+    ImGui::PushFont(titleFont);
     ParameterGUI::beginPanel("Audio", 0, yposition, flags);
+    ImGui::PopFont();
+    ImGui::PushFont(bodyFont);
     ImGui::PushItemWidth(-120);
     ParameterGUI::drawParameterBool(&audioOn);
     ImGui::SameLine();
@@ -548,7 +631,11 @@ void QHOSYN::onDraw(Graphics& g) {
     ParameterGUI::endPanel();
 
     // Draw Control Panel
+    ImGui::PopFont();
+    ImGui::PushFont(titleFont);
     ParameterGUI::beginPanel("Draw", 0, yposition, flags);
+    ImGui::PopFont();
+    ImGui::PushFont(bodyFont);
     ParameterGUI::drawParameterBool(&drawGrid);
     ParameterGUI::drawParameterBool(&drawAxes);
     ParameterGUI::drawParameterBool(&drawWavefunction);
@@ -560,7 +647,11 @@ void QHOSYN::onDraw(Graphics& g) {
     ParameterGUI::endPanel();
 
     // OSC Control Panel
+    ImGui::PopFont();
+    ImGui::PushFont(titleFont);
     ParameterGUI::beginPanel("OSC", 0, yposition, flags);
+    ImGui::PopFont();
+    ImGui::PushFont(bodyFont);
     ParameterGUI::drawParameterBool(&oscSenderOn);
     if (oscSenderOn) {
       ImGui::PushItemWidth(200);
@@ -591,7 +682,11 @@ void QHOSYN::onDraw(Graphics& g) {
     ParameterGUI::endPanel();
 
     // Measurement Control Panel
+    ImGui::PopFont();
+    ImGui::PushFont(titleFont);
     ParameterGUI::beginPanel("Measurement", 0, yposition, flags);
+    ImGui::PopFont();
+    ImGui::PushFont(bodyFont);
     measurementTrigger = ImGui::Button("Measure", ImVec2(100, 20));
     ParameterGUI::drawParameterBool(&automeasure);
     ImGui::PushItemWidth(-120);
