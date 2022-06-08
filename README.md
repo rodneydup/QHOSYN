@@ -75,6 +75,8 @@ You'll also need a few libraries installed: libsndfile flac libogg libvorbis (If
 
 ### Windows (Visual Studio)
 
+#### First, check the releases page to see if the pre-compiled installers work for you: https://github.com/rodneydup/QHOSYN/releases/latest
+
 For installation through Visual Studio (taken from the allolib repo: https://github.com/AlloSphere-Research-Group/allolib):
 
     Install Visual Studio 2017 Community Edition from https://visualstudio.microsoft.com/downloads/
@@ -89,6 +91,9 @@ Install libsndfile: Aim your browser at http://www.mega-nerd.com/libsndfile/#Dow
     - Install this at the default location.
 
 #### Compile QHOSYN
+
+- You'll have to do some work to get GSL linked... not easy. I recommend using vcpkg.
+
 - Note that you need Visual Studio installed for the below scripts to work.
 
 - Clone the repo using the git bash terminal:
