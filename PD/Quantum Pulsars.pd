@@ -1,6 +1,6 @@
-#N canvas 8 35 1904 1012 12;
+#N canvas 968 1088 944 1064 12;
 #X obj 40 420 pulsar~;
-#X obj 420 840 dac~;
+#X obj 416 717 dac~;
 #X obj 30 36 import mrpeach;
 #X obj 30 60 table realVals;
 #X obj 450 420 pulsar~;
@@ -8,7 +8,7 @@
 #X obj 495 285 r pan;
 #X obj 494 183 tgl 20 0 measureOn empty Measurements 22 7 0 10 #fcfcfc
 #000000 #000000 1 1;
-#N canvas 904 548 1008 524 receiveOSC 0;
+#N canvas 8 561 944 510 receiveOSC 1;
 #X obj 190 50 udpreceive 16447;
 #X obj 190 80 unpackOSC;
 #X obj 192 192 list prepend;

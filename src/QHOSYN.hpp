@@ -411,13 +411,16 @@ class QHOSYN : public App, public MIDIMessageHandler {
         return 0;
     }
   }
+  
   void setSoundOutputPath(std::string sound_output_path) {
     soundOutput = al::File::conformPathToOS(sound_output_path);
   }
+
   void setAudioSettings(float sample_rate) {
     globalSamplingRate = sample_rate;
     configureAudio(sample_rate, BLOCK_SIZE, MAX_AUDIO_OUTS, 0);
   }
+
   void setOutChannels(int lead_channel, int max_possible_channels) {
     AudioChanIndexOut[0] = lead_channel;
     if (max_possible_channels == 1) {
