@@ -4,6 +4,20 @@
 
 #include <vector>
 
+#ifdef _WIN32
+#include <stdlib.h>
+#define strcasecmp _stricmp
+#define PATH_MAX 1024
+#elif __linux__
+#include <assert.h>
+#include <limits.h>
+#include <unistd.h>
+#else
+#include <limits.h>
+#include <mach-o/dyld.h>
+#include <stdlib.h>
+#endif
+
 #include "../external/fparser4.5.2/fparser.hh"
 
 // Calculate a factorial
@@ -387,7 +401,7 @@ std::string getExecutablePath() {
 
 #elif __linux__
   char exePath[PATH_MAX];
-  ssize_t len = ::readlink("/proc/self/exe", exePath, sizeof(exePath));
+  ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath));
   if (len == -1 || len == sizeof(exePath)) len = 0;
   exePath[len] = '\0';
 #else  // THIS MEANS YOU ARE USING A >

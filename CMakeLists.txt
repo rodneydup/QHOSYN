@@ -44,7 +44,7 @@ target_include_directories(${LIB_NAME} PRIVATE
 )
 
 set_target_properties(${LIB_NAME} PROPERTIES
-  CXX_STANDARD 14
+  CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
 )
 
@@ -63,7 +63,13 @@ if(APPLE)
 endif()
 
 # Linux library needed for native file dialog.
-
+if(UNIX AND NOT APPLE)
+  set(LINUX TRUE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+  include_directories(${GTK3_INCLUDE_DIRS})
+  link_directories(${GTK3_LIBRARY_DIRS})
+endif()
 
 if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/al_ext)
   message("Buiding extensions in al_ext")
