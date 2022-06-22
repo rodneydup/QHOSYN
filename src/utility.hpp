@@ -1,7 +1,6 @@
 #define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
 #include <gsl/gsl_integration.h>
-#include <unistd.h>
 
 #include <vector>
 
@@ -376,3 +375,45 @@ class parseStringToMathFunction {
   std::string mVariables;
   std::string mFunction;
 };
+
+/*
+ * Returns the full path to the currently running executable,
+ * or an empty string in case of failure.
+ */
+std::string getExecutablePath() {
+#if _WIN32
+  char *exePath;
+  if (_get_pgmptr(&exePath) != 0) exePath = "";
+
+#elif __linux__
+  char exePath[PATH_MAX];
+  ssize_t len = ::readlink("/proc/self/exe", exePath, sizeof(exePath));
+  if (len == -1 || len == sizeof(exePath)) len = 0;
+  exePath[len] = '\0';
+#else  // THIS MEANS YOU ARE USING A >
+  char exePath[PATH_MAX];
+  uint32_t len = sizeof(exePath);
+  if (_NSGetExecutablePath(exePath, &len) != 0) {
+    exePath[0] = '\0';  // buffer too small (!)
+  } else {
+    // resolve symlinks, ., .. if possible
+    char *canonicalPath = realpath(exePath, NULL);
+    if (canonicalPath != NULL) {
+      strncpy(exePath, canonicalPath, len);
+      free(canonicalPath);
+    }
+  }
+#endif
+  return std::string(exePath);
+}
+
+std::string getContentPath_OSX(std::string s) {
+  char delim = '/';
+  size_t counter = 0;
+  size_t i = s.size() - 1;
+  while (counter < 2) {
+    if (s[i] == delim) counter++;
+    i--;
+  }
+  return s.substr(0, i + 2);
+}

@@ -20,3 +20,7 @@ result=$?
 if [ ${result} == 0 ]; then
   ./bin/QHOSYN
 fi
+
+if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+  read
+fi

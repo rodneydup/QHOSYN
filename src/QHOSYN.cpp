@@ -12,6 +12,12 @@ void QHOSYN::onInit() {
   title("QHOSYN");
   audioIO().setStreamName("QHOSYN");
 
+  execDir = al::File::directory(getExecutablePath());
+
+#ifdef __APPLE__
+  execDir = getContentPath_OSX(execDir);
+#endif
+
   audioIO().deviceOut(AudioDevice::defaultOutput());
   setAudioSettings(1);
 
@@ -708,6 +714,7 @@ void QHOSYN::onDraw(Graphics& g) {
         "port?");
       ImGui::EndPopup();
     }
+    ImGui::PopFont();
 
     imguiEndFrame();
 

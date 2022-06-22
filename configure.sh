@@ -7,6 +7,15 @@ rm -f external/al_ext/openvr/CMakeLists.txt
 rm -f external/al_ext/spatialaudio/CMakeLists.txt
 rm -f external/al_ext/statedistribution/CMakeLists.txt
 
+(
+  if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+    mkdir -p ./bin
+    cd ./bin
+    mkdir -p ./Resources
+    cp -r ../deployment/externalResources/fonts/ ./Resources
+  fi
+)
+
 # Build nativefiledialog if it doesnt exist../external/libsamplerate/build
 (
   if [ ! -d "./external/nativefiledialog/build/lib" ]; then
@@ -33,14 +42,16 @@ rm -f external/al_ext/statedistribution/CMakeLists.txt
   cd build
   mkdir -p release
   cd release
-  cmake -DCMAKE_BUILD_TYPE=Release -Wno-deprecated -DBUILD_EXAMPLES=0 -DRTAUDIO_API_JACK=0 -DRTMIDI_API_JACK=1 ../..
+  cmake "-DCMAKE_TOOLCHAIN_FILE=C:\Users\Rondo\Desktop\vcpkg\scripts\buildsystems\vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -Wno-deprecated -DBUILD_EXAMPLES=0 -DRTAUDIO_API_JACK=0 -DRTMIDI_API_JACK=0 ../..
 )
 
-# Configure debug build
 (
-  mkdir -p build
   cd build
   mkdir -p debug
   cd debug
-  cmake -DCMAKE_BUILD_TYPE=Debug -Wno-deprecated -DBUILD_EXAMPLES=0 -DRTAUDIO_API_JACK=0 -DRTMIDI_API_JACK=1 ../..
+  cmake "-DCMAKE_TOOLCHAIN_FILE=C:\Users\Rondo\Desktop\vcpkg\scripts\buildsystems\vcpkg.cmake" -DCMAKE_BUILD_TYPE=Debug -Wno-deprecated -DBUILD_EXAMPLES=0 -DRTAUDIO_API_JACK=0 -DRTMIDI_API_JACK=0 ../..
 )
+
+if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+  read
+fi

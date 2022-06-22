@@ -1,0 +1,15 @@
+deployment/*
+.ccls-cache/
+bin/
+build/
+.DS_STORE
+imgui.ini
+*.aiff
+*.wav
+!externalResources/samples/*.aiff
+!externalResources/samples/*.wav
+*.o
+.vscode/
+.vs/
+sc/
+valgrind-output.txt

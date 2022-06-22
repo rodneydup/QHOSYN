@@ -15,6 +15,7 @@ By Rodney DuPlessis (2021)
 #include <iostream>
 #include <random>
 #include <vector>
+#include <array>
 
 // Native File Dialog
 #include "../external/nativefiledialog/src/include/nfd.h"
@@ -30,6 +31,7 @@ By Rodney DuPlessis (2021)
 #include "al/io/al_MIDI.hpp"
 #include "al/ui/al_ControlGUI.hpp"
 #include "al/ui/al_Parameter.hpp"
+#include "al/io/al_File.hpp"
 #include "al_ext/soundfile/al_OutputRecorder.hpp"
 
 // QHOSYN
@@ -72,6 +74,8 @@ class QHOSYN : public App, public MIDIMessageHandler {
   void onMessage(osc::Message& m) override;
 
   static const int MAX_AUDIO_OUTS = 2;
+
+  std::string execDir;
 
   // Meshes for visual display
   Mesh waveFunctionPlot;  // complex valued wave function

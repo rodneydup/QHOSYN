@@ -63,13 +63,7 @@ if(APPLE)
 endif()
 
 # Linux library needed for native file dialog.
-if(UNIX AND NOT APPLE)
-  set(LINUX TRUE)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
-  include_directories(${GTK3_INCLUDE_DIRS})
-  link_directories(${GTK3_LIBRARY_DIRS})
-endif()
+
 
 if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/al_ext)
   message("Buiding extensions in al_ext")
@@ -156,8 +150,31 @@ find_library(NFD_LIBRARY nfd HINTS
 
 # link allolib to project
 get_target_property(AL_EXT_LIBRARIES al_ext AL_EXT_LIBRARIES)
-find_package(GSL REQUIRED)    # See below (2)
-target_link_libraries(${LIB_NAME} PRIVATE al GSL::gsl GSL::gslcblas fftw3)
+
+if(NOT WIN32)
+    find_package(GSL REQUIRED)
+    target_link_libraries(${LIB_NAME} PRIVATE al GSL::gsl GSL::gslcblas fftw3)
+endif()
+
+if(WIN32)
+    if (NOT DEFINED ENV{VCPKG_ROOT})
+        message(FATAL_ERROR "VCPKG_ROOT environment variable not defined")
+    endif()
+    set(VCPKG_ROOT $ENV{VCPKG_ROOT})
+    if(CMAKE_SIZEOF_VOID_P MATCHES 8)
+        # Set 64-bit stuff
+        set(FFTW_ROOT "${VCPKG_ROOT}/packages/fftw3_x64-windows")
+    else()
+        # Set 32-bit stuff
+        set(FFTW_ROOT "${VCPKG_ROOT}/packages/fftw3_x86-windows")
+    endif()
+    set(FFTW3_DIR "${FFTW_ROOT}/share/fftw3")
+    include_directories("${FFTW_ROOT}/include")
+    # find_library(FFTW3 "${FFTW_ROOT}/lib")
+    find_package(FFTW3 REQUIRED)
+    find_package(GSL REQUIRED)
+    target_link_libraries(${LIB_NAME} PRIVATE al GSL::gsl GSL::gslcblas FFTW3::fftw3)
+endif()
 
 target_link_libraries(${LIB_NAME} PUBLIC 
   al 
@@ -191,7 +208,7 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 target_link_libraries(${APP_NAME} PUBLIC ${LIB_NAME} ${LIBRARIES})
 
 set_target_properties(${LIB_NAME} PROPERTIES
-  CXX_STANDARD 14
+  CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
 )
 
@@ -199,7 +216,7 @@ set_target_properties(${LIB_NAME} PROPERTIES
 set_target_properties(${APP_NAME} PROPERTIES
   BUILD_WITH_INSTALL_RPATH 1
   INSTALL_NAME_DIR "@rpath"
-  CXX_STANDARD 14
+  CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/bin
   RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_LIST_DIR}/bin
