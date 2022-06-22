@@ -121,6 +121,7 @@ class WaveFunction {
     if (!coeff.empty()) {
       coefficients = coeff;
     } else {
+      coefficients.resize(dimensions);
       if (project) {
         coefficients = orthogonalBasisProjection(initWaveFunc);
       } else {

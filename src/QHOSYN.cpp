@@ -216,9 +216,9 @@ void QHOSYN::onCreate() {
 
 #ifdef __APPLE__
   bodyFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
-                                          16.0f, &fontConfig);
+                                          16.0f, &fontConfig, ranges.Data);
   titleFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
-                                           20.0f, &fontConfig);
+                                           20.0f, &fontConfig, ranges.Data);
 #endif
 
 #ifdef __linux__
@@ -230,9 +230,9 @@ void QHOSYN::onCreate() {
 
 #ifdef _WIN32
   bodyFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
-                                          16.0f, &fontConfig);
+                                          16.0f, &fontConfig, ranges.Data);
   titleFont = io.Fonts->AddFontFromFileTTF((execDir + "Resources/fonts/Roboto-Regular.ttf").c_str(),
-                                           20.0f, &fontConfig);
+                                           20.0f, &fontConfig, ranges.Data);
 #endif
   io.Fonts->Build();  // Build the atlas while 'ranges' is still in scope and not deleted.
 
@@ -350,6 +350,7 @@ void QHOSYN::onCreate() {
   for (int chan = 0; chan < 2; chan++) {
     pan[chan].changeType("lin");
     pan[chan].setTime(16.0f);
+    pan[chan].setTarget(chan);
     filter[chan].type(gam::RESONANT);
     filter[chan].res(2);
     antiAlias[chan].type(gam::LOW_PASS);
@@ -389,7 +390,7 @@ void QHOSYN::onAnimate(double dt) {
       }
       // Noise band synthesis
       if (sourceSelect[chan] == 4) {
-        for (int i = ifftBin; i < ifftBin + (resolution * ifftBandwidth); i++) {
+        for (int i = ifftBin; i < ifftBin + ((resolution - 1) * ifftBandwidth); i++) {
           if (i < fftSize / 2) {
             double phase = uniform(gen);
             float t = (i - ifftBin) / (float)ifftBandwidth;
@@ -414,7 +415,7 @@ void QHOSYN::onAnimate(double dt) {
         }
         // IFFT Synthesis
       } else if (sourceSelect[chan] == 5) {
-        for (int i = ifftBin; i < ifftBin + (resolution * ifftBandwidth); i++) {
+        for (int i = ifftBin; i < ifftBin + ((resolution - 1) * ifftBandwidth); i++) {
           if (i < fftSize / 2) {
             float t = (i - ifftBin) / (float)ifftBandwidth;
             float temp;
@@ -748,7 +749,7 @@ void QHOSYN::onSound(al::AudioIOData& io) {
                 }
               }
             } else {
-              if (sourceSelect[chan] <= 3) pan[chan].setCurrentValue(chan);
+              if (sourceSelect[chan] <= 3) pan[chan].setTarget(chan);
             }
 
             // update table
@@ -768,7 +769,7 @@ void QHOSYN::onSound(al::AudioIOData& io) {
               sample[chan] =
                 filter[chan]((x1 * t) + (x0 * (1 - t))) / 2;  // (divided by 2 because it's loud)
             else
-              sample[chan] = ((x1 * t) + (x0 * (1 - t))) / 2;
+              sample[chan] = ((x1 * t) + (x0 * (1 - t))) / 2.0f;
         }
       }
       // Fourier Synthesis
@@ -801,6 +802,7 @@ void QHOSYN::onSound(al::AudioIOData& io) {
       }
       for (int chan = 0; chan < 2; chan++) pan[chan].process();
       // output
+      // std::cout << pan[0].getCurrentValue() << std::endl;
       io.out(0) = antiAlias[0]((sample[0] * (1.0f - pan[0].getCurrentValue())) +
                                (sample[1] * (1.0f - pan[1].getCurrentValue()))) *
                   volume;
