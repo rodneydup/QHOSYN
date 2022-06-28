@@ -9,6 +9,10 @@
 #include <memory>
 #include <stack>
 
+#ifdef __APPLE__
+#include <boost/math/special_functions/hermite.hpp>
+#endif
+
 #include "utility.hpp"
 
 using namespace std::complex_literals;
@@ -25,13 +29,19 @@ class HilbertSpace {
   HilbertSpace(int dimensions) {
     dim = dimensions;
     calcEigenBasis();
-  }
-
+  }    
   // pi^1/4 / sqrt(2^n * n!)  * e^(-(x^2/2)) * Hn
+#ifdef __APPLE__
+  double qhoBasis(int n, double x) {
+    return (pow(M_PI, 0.25) / sqrt(pow(2, n) * factorial(n))) * exp(pow(x, 2) / -2.0) *
+           boost::math::hermite(n, x);
+  };
+#else
   double qhoBasis(int n, double x) {
     return (pow(M_PI, 0.25) / sqrt(pow(2, n) * factorial(n))) * exp(pow(x, 2) / -2.0) *
            std::hermite(n, x);
   };
+#endif
 
   void calcEigenBasis() {
     for (int i = 0; i < dim; i++)

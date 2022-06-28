@@ -53,7 +53,7 @@ QHOSYN was designed as part of my PhD research in order to facilitate the compos
 
 You must have cmake installed (version 3.10 or later), and Xcode (hopefully we can get rid of this dependency soon).
 
-You'll also need a few libraries installed: libsndfile flac libogg libvorbis (If you have homebrew, you can get them all with `brew install libsndfile flac libogg libvorbis`)
+You'll also need a few libraries installed: libsndfile flac libogg libvorbis boost (If you have homebrew, you can get them all with `brew install libsndfile flac libogg libvorbis boost`)
 
 - First, clone the repo:
 

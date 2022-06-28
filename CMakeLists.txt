@@ -162,6 +162,11 @@ if(NOT WIN32)
     target_link_libraries(${LIB_NAME} PRIVATE al GSL::gsl GSL::gslcblas fftw3)
 endif()
 
+if(APPLE)
+    find_package(Boost REQUIRED)
+    target_link_libraries(${LIB_NAME} PRIVATE ${Boost_LIBRARIES})
+endif()
+
 if(WIN32)
     if (NOT DEFINED ENV{VCPKG_ROOT})
         message(FATAL_ERROR "VCPKG_ROOT environment variable not defined")
@@ -281,4 +286,3 @@ if(APPLE)
   )
 
 endif(APPLE)
-

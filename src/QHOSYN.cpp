@@ -182,7 +182,7 @@ void QHOSYN::onInit() {
     midiIn.openPort(port);
     printf("Opened port to %s\n", midiIn.getPortName(port).c_str());
   } else {
-    printf("Error: No MIDI devices found.\n");
+    printf("Warning: No MIDI devices found. Connect a MIDI device and restart the application for MIDI support.\n");
   }
 
   std::cout << "onInit() - All domains have been initialized " << std::endl;

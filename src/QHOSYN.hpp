@@ -24,7 +24,7 @@ By Rodney DuPlessis (2021)
 #include <fftw3.h>
 
 // Allolib
-#include "Gamma/Filter.h"
+#include "../external/allolib/external/Gamma/Gamma/Filter.h"
 #include "Gamma/tbl.h"
 #include "al/app/al_App.hpp"
 #include "al/graphics/al_Shapes.hpp"

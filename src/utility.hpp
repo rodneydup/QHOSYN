@@ -3,6 +3,7 @@
 #include <gsl/gsl_integration.h>
 
 #include <vector>
+#include <iostream>
 
 #ifdef _WIN32
 #include <stdlib.h>
@@ -13,6 +14,7 @@
 #include <limits.h>
 #include <unistd.h>
 #else
+#include <assert.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <stdlib.h>
